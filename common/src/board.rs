@@ -19,6 +19,9 @@ pub trait Board {
     /// The ports on the boundary of the board, in no particular order
     fn boundary_ports(&self) -> Vec<Self::Port>;
 
+    /// All the kinds of tiles used by the board
+    fn all_kinds(&self) -> Vec<Self::Kind>;
+
     /// The kind of tile that goes in a specific location
     fn kind_at(&self, loc: Self::TLoc) -> Self::Kind;
 
@@ -72,8 +75,11 @@ impl Board for RectangleBoard {
         ).collect_vec()
     }
 
+    fn all_kinds(&self) -> Vec<Self::Kind> {
+        vec![()]
+    }
+
     fn kind_at(&self, _: Self::TLoc) -> Self::Kind {
-        ()
     }
 
     fn loc_ports(&self, loc: <Self as Board>::TLoc) -> Vec<<Self as Board>::Port> {

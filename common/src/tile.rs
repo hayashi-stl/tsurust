@@ -17,8 +17,7 @@ pub trait Tile: Clone + Eq + Ord + Hash {
     /// All tiles of this type, in no particular order.
     /// Rotations do not count as separate tiles.
     fn all(config: Self::TileConfig) -> Vec<Self> where Self: Sized {
-        let mut with_rotations = Self::all_including_rotations(config).into_iter()
-            .map(|tile| tile).collect::<HashSet<_>>();
+        let mut with_rotations = Self::all_including_rotations(config).into_iter().collect::<HashSet<_>>();
 
         let mut groups = vec![];
         while !with_rotations.is_empty() {
@@ -48,6 +47,9 @@ pub trait Tile: Clone + Eq + Ord + Hash {
 
     /// Rotate the tile `num_times` times counterclockwise.
     fn rotate(&self, num_times: i32) -> Self;
+
+    /// The output port of some input port on the tile
+    fn output(&self, input: u32) -> u32;
 }
 
 /// A regular-polygon-shaped tile with `EDGES` edges
@@ -62,7 +64,7 @@ impl<const EDGES: u32> RegularTile<EDGES> {
     }
 
     fn ports_per_edge(&self) -> u32 {
-        self.connections.len() as u32 / 2
+        self.connections.len() as u32 / EDGES
     }
 }
 
@@ -93,8 +95,8 @@ impl<const EDGES: u32> Tile for RegularTile<EDGES> {
             }
             pairing[sizes.len()..num_ports as usize].fill(0);
 
-            for j in 0..pairing.len() {
-                pairing[j] = numbers_left.remove(pairing[j] as usize);
+            for entry in &mut pairing {
+                *entry = numbers_left.remove(*entry as usize);
             }
 
             pairings.push(pairing.clone());
@@ -129,6 +131,10 @@ impl<const EDGES: u32> Tile for RegularTile<EDGES> {
                 (self.connections[(i - offset).rem_euclid(self.num_ports() as i32) as usize] as i32 + offset).rem_euclid(self.num_ports() as i32) as u32;
         }
         result
+    }
+
+    fn output(&self, input: u32) -> u32 {
+        self.connections[input as usize]
     }
 }
 
