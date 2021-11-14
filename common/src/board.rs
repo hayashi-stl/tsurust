@@ -1,16 +1,48 @@
 use crate::math::{Vec2i, Vec2u};
+use crate::tile::Kind;
 use nalgebra as na;
 use nalgebra::vector;
 use itertools::{Itertools, chain, iproduct};
+use enum_dispatch::enum_dispatch;
 
 use std::fmt::Debug;
 use std::hash::Hash;
 
+#[enum_dispatch]
+pub trait Port {}
+
+impl Port for (Vec2u, Vec2u) {}
+
+#[enum_dispatch(Port)]
+pub enum BasePort {
+    Vec2uPair((Vec2u, Vec2u))
+}
+
+#[enum_dispatch]
+pub trait TLoc {}
+
+impl TLoc for Vec2u {}
+
+#[enum_dispatch(TLoc)]
+pub enum BaseTLoc {
+    Vec2u(Vec2u)
+}
+
+#[enum_dispatch]
+pub trait GenericBoard {}
+
+impl<B: Board> GenericBoard for B {}
+
+#[enum_dispatch(GenericBoard)]
+enum BaseBoard {
+    RectangleBoard(RectangleBoard)
+}
+
 /// A board in the path game, parameterized by player location (port) type, tile location type, and tile kind type
 pub trait Board {
-    type TLoc: Clone + Debug + Eq + Hash;
-    type Port: Clone + Debug + Eq + Hash;
-    type Kind: Clone + Debug + Eq + Hash;
+    type TLoc: Clone + Debug + Eq + Hash + TLoc;
+    type Port: Clone + Debug + Eq + Hash + Port;
+    type Kind: Clone + Debug + Eq + Hash + Kind;
     type TileConfig: Clone + Debug;
 
     /// All the ports on the board, in no particular order

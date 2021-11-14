@@ -1,9 +1,19 @@
 use std::collections::VecDeque;
-
+use enum_dispatch::enum_dispatch;
 use fnv::FnvHashMap;
 use itertools::Itertools;
 
-use crate::{board::Board, board_state::BoardState, game::Game, player_state::PlayerState, tile::Tile};
+use crate::{board::{Board, RectangleBoard}, board_state::BoardState, game::{Game, PathGame}, player_state::PlayerState, tile::{RegularTile, Tile}};
+
+#[enum_dispatch]
+pub trait GenericGameState {}
+
+impl<G: Game> GenericGameState for GameState<G> {}
+
+#[enum_dispatch(GenericGameState)]
+pub enum BaseGameState {
+    Normal(GameState<PathGame<RectangleBoard, RegularTile<4>>>)
+}
 
 /// The state of the game
 #[derive(Clone, Debug)]
@@ -159,6 +169,8 @@ impl<G: Game> GameState<G> {
                 game.board().port_locs(port).contains(loc)) &&
             self.board_state.tile_at(loc).is_none() &&
             kind == &game.board().kind_at(loc)
+            // TODO: In the original game, there's also the condition that a player can't kill themselves with a tile
+            // if they have a move that doesn't do that. Figure out if this should be checked here.
     }
 
     /// Have the current player take a turn by placing a tile of kind `kind` from index `index` in their hand to location `loc`.

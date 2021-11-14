@@ -1,7 +1,18 @@
 use fnv::FnvHashMap;
 use itertools::Itertools;
+use enum_dispatch::enum_dispatch;
 
-use crate::{board::Board, game::Game, tile::Tile};
+use crate::{board::Board, game::Game, tile::{RegularTile, Tile}};
+
+#[enum_dispatch]
+pub trait GenericPlayerState {}
+
+impl<T: Tile> GenericPlayerState for PlayerState<T> {}
+
+#[enum_dispatch(GenericPlayerState)]
+pub enum BasePlayerState {
+    RegularTile4(PlayerState<RegularTile<4>>)
+}
 
 /// The state of a player
 #[derive(Clone, Debug)]

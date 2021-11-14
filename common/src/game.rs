@@ -1,15 +1,36 @@
 use std::marker::PhantomData;
 use std::fmt::Debug;
 use std::hash::Hash;
-
+use enum_dispatch::enum_dispatch;
 use fnv::FnvHashMap;
 
-use crate::{board::Board, tile::Tile};
+use crate::{board::{Board, Port, RectangleBoard, TLoc}, game_state::GameState, tile::{Kind, RegularTile, Tile}};
+use crate::game_state::BaseGameState;
+
+#[enum_dispatch]
+pub trait GenericGame {
+    fn new_state(&self, num_players: u32) -> BaseGameState;
+}
+
+impl<G> GenericGame for G
+where
+    G: Game,
+    BaseGameState: From<GameState<G>>,
+{
+    fn new_state(&self, num_players: u32) -> BaseGameState {
+        GameState::new(self, num_players).into()
+    }
+}
+
+#[enum_dispatch(GenericGame)]
+pub enum BaseGame {
+    Normal(PathGame<RectangleBoard, RegularTile<4>>)
+}
 
 pub trait Game {
-    type TLoc: Clone + Debug + Eq + Hash;
-    type Port: Clone + Debug + Eq + Hash;
-    type Kind: Clone + Debug + Eq + Ord + Hash;
+    type TLoc: Clone + Debug + Eq + Hash + TLoc;
+    type Port: Clone + Debug + Eq + Hash + Port;
+    type Kind: Clone + Debug + Eq + Ord + Hash + Kind;
     type TileConfig: Clone + Debug;
     type Board: Clone + Debug + Board<TLoc = Self::TLoc, Port = Self::Port, Kind = Self::Kind, TileConfig = Self::TileConfig>;
     type Tile: Clone + Debug + Tile<Kind = Self::Kind, TileConfig = Self::TileConfig>;
@@ -40,7 +61,7 @@ pub struct PathGame<B: Board, T> {
 
 impl<K, C, B, T> PathGame<B, T>
 where
-    K: Clone + Debug + Eq + Ord + Hash,
+    K: Clone + Debug + Eq + Ord + Hash + Kind,
     C: Clone + Debug,
     B: Clone + Debug + Board<Kind = K, TileConfig = C>,
     T: Clone + Debug + Tile<Kind = K, TileConfig = C>
@@ -58,7 +79,7 @@ where
 
 impl<K, C, B, T> Game for PathGame<B, T>
 where
-    K: Clone + Debug + Eq + Ord + Hash,
+    K: Clone + Debug + Eq + Ord + Hash + Kind,
     C: Clone + Debug,
     B: Clone + Debug + Board<Kind = K, TileConfig = C>,
     T: Clone + Debug + Tile<Kind = K, TileConfig = C>

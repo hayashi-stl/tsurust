@@ -9,5 +9,6 @@ edition = "2018"
 nalgebra = "0.29"
 itertools = "0.10"
 fnv = "1.0"
+enum_dispatch = "0.3"
 
 [dev-dependencies]

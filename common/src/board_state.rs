@@ -2,10 +2,28 @@ use fnv::FnvHashMap;
 use itertools::Itertools;
 use std::hash::Hash;
 use std::fmt::Debug;
+use enum_dispatch::enum_dispatch;
 
-use crate::board::Board;
+
+use crate::board::{Board, RectangleBoard};
 use crate::game::Game;
-use crate::tile::Tile;
+use crate::tile::{RegularTile, Tile};
+
+#[enum_dispatch]
+pub trait GenericBoardState {}
+
+impl<K, C, B, T> GenericBoardState for BoardState<B, T>
+where
+    K: Clone + Debug + Eq + Hash,
+    C: Clone + Debug,
+    B: Clone + Debug + Board<Kind = K, TileConfig = C>,
+    T: Clone + Debug + Tile<Kind = K, TileConfig = C>
+{}
+
+#[enum_dispatch(GenericBoardState)]
+pub enum BaseBoardState {
+    Normal(BoardState<RectangleBoard, RegularTile<4>>)
+}
 
 /// The state of the board
 #[derive(Clone, Debug)]

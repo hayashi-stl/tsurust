@@ -1,13 +1,33 @@
 use std::{collections::HashSet, fmt::Debug};
 use std::hash::Hash;
-
+use enum_dispatch::enum_dispatch;
 use itertools::Itertools;
 
 use crate::board::PortsPerEdgeTileConfig;
 
+#[enum_dispatch]
+pub trait Kind {}
+
+impl Kind for () {}
+
+#[enum_dispatch(Kind)]
+pub enum BaseKind {
+    Unit(())
+}
+
+#[enum_dispatch]
+pub trait GenericTile {}
+
+impl<T: Tile> GenericTile for T {}
+
+#[enum_dispatch(GenericTile)]
+pub enum BaseTile {
+    RegularTile4(RegularTile<4>)
+}
+
 /// A tile in the path game, parameterized by kind
 pub trait Tile: Clone + Eq + Ord + Hash {
-    type Kind: Clone + Debug + Eq + Hash;
+    type Kind: Clone + Debug + Eq + Hash + Kind;
     type TileConfig: Clone + Debug;
 
     /// All tiles of this type, in no particular order.
