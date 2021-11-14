@@ -1,4 +1,5 @@
 use fnv::FnvHashMap;
+use itertools::Itertools;
 
 use crate::{board::Board, game::Game, tile::Tile};
 
@@ -19,6 +20,11 @@ impl<T: Tile> PlayerState<T> {
         &self.tiles
     }
 
+    /// Number of tiles of a specific kind that the player is holding
+    pub fn num_tiles_by_kind(&self, kind: &T::Kind) -> u32 {
+        self.tiles[kind].len() as u32
+    }
+
     /// Adds a tile to the player's hand
     pub fn add_tile(&mut self, tile: T) {
         self.tiles.get_mut(&tile.kind()).expect("Every kind should have a tile list").push(tile)
@@ -26,8 +32,13 @@ impl<T: Tile> PlayerState<T> {
 
     /// Removes and returns a tile from the player's hand by kind and index.
     /// For now, assumes the index exists.
-    pub fn remove_tile(&mut self, kind: T::Kind, index: u32) -> T {
-        self.tiles.get_mut(&kind).expect("Every kind should have a tile list")
+    pub fn remove_tile(&mut self, kind: &T::Kind, index: u32) -> T {
+        self.tiles.get_mut(kind).expect("Every kind should have a tile list")
             .remove(index as usize)
+    }
+
+    /// Removes and returns all tiles from the player's hand, probably because the player is dead.
+    pub fn remove_all_tiles(&mut self) -> Vec<T> {
+        self.tiles.values_mut().flat_map(|v| std::mem::take(v)).collect_vec()
     }
 }

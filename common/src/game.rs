@@ -17,13 +17,16 @@ pub trait Game {
     /// The game's board
     fn board(&self) -> &Self::Board;
 
+    /// All the ports that players can start at
+    fn start_ports(&self) -> Vec<Self::Port>;
+
     /// The set of tiles the game uses
     fn all_tiles(&self) -> Vec<Self::Tile> {
         Self::Tile::all(self.board().tile_config())
     }
 
     /// Tiles of some kind that a player starts with
-    fn num_tiles_per_player(&self, kind: Self::Kind) -> u32;
+    fn num_tiles_per_player(&self, kind: &Self::Kind) -> u32;
 }
 
 /// A definition for a path game
@@ -71,7 +74,11 @@ where
         &self.board
     }
 
-    fn num_tiles_per_player(&self, kind: Self::Kind) -> u32 {
-        self.tiles_per_player[&kind]
+    fn start_ports(&self) -> Vec<Self::Port> {
+        self.start_ports.clone()
+    }
+
+    fn num_tiles_per_player(&self, kind: &Self::Kind) -> u32 {
+        self.tiles_per_player[kind]
     }
 }

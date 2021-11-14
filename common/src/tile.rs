@@ -40,7 +40,7 @@ pub trait Tile: Clone + Eq + Ord + Hash {
     }
 
     /// The kind of the tile
-    fn kind(&self) -> Self::Kind;
+    fn kind(&self) -> &Self::Kind;
 
     /// The number of ports on this tile
     fn num_ports(&self) -> u32;
@@ -117,7 +117,7 @@ impl<const EDGES: u32> Tile for RegularTile<EDGES> {
         (0..EDGES).map(|i| self.rotate(i as i32)).collect_vec()
     }
 
-    fn kind(&self) -> Self::Kind {}
+    fn kind(&self) -> &Self::Kind { &() }
 
     fn num_ports(&self) -> u32 {
         self.ports_per_edge() * EDGES

@@ -23,13 +23,13 @@ pub trait Board {
     fn all_kinds(&self) -> Vec<Self::Kind>;
 
     /// The kind of tile that goes in a specific location
-    fn kind_at(&self, loc: Self::TLoc) -> Self::Kind;
+    fn kind_at(&self, loc: &Self::TLoc) -> Self::Kind;
 
     /// The player ports around a tile location, in order
-    fn loc_ports(&self, loc: Self::TLoc) -> Vec<Self::Port>;
+    fn loc_ports(&self, loc: &Self::TLoc) -> Vec<Self::Port>;
 
     /// The tile locations around a port, in no particular order
-    fn port_locs(&self, port: Self::Port) -> Vec<Self::TLoc>;
+    fn port_locs(&self, port: &Self::Port) -> Vec<Self::TLoc>;
 
     /// Tile configuration for the board, used for generating tiles
     fn tile_config(&self) -> Self::TileConfig;
@@ -79,19 +79,19 @@ impl Board for RectangleBoard {
         vec![()]
     }
 
-    fn kind_at(&self, _: Self::TLoc) -> Self::Kind {
+    fn kind_at(&self, _: &Self::TLoc) -> Self::Kind {
     }
 
-    fn loc_ports(&self, loc: <Self as Board>::TLoc) -> Vec<<Self as Board>::Port> {
+    fn loc_ports(&self, loc: &<Self as Board>::TLoc) -> Vec<<Self as Board>::Port> {
         chain!(
-            (1..=self.ports_per_edge).map(|i| (loc, vector![i, 0])),
-            (1..=self.ports_per_edge).map(|i| (loc + vector![1, 0], vector![0, i])),
-            (1..=self.ports_per_edge).rev().map(|i| (loc + vector![0, 1], vector![i, 0])),
-            (1..=self.ports_per_edge).rev().map(|i| (loc, vector![0, i]))
+            (1..=self.ports_per_edge).map(|i| (*loc, vector![i, 0])),
+            (1..=self.ports_per_edge).map(|i| (*loc + vector![1, 0], vector![0, i])),
+            (1..=self.ports_per_edge).rev().map(|i| (*loc + vector![0, 1], vector![i, 0])),
+            (1..=self.ports_per_edge).rev().map(|i| (*loc, vector![0, i]))
         ).collect_vec()
     }
 
-    fn port_locs(&self, port: Self::Port) -> Vec<Self::TLoc> {
+    fn port_locs(&self, port: &Self::Port) -> Vec<Self::TLoc> {
         let p0 = na::convert::<_, Vec2i>(port.0);
         let p1 = p0 + if port.1[1] == 0 { vector![0, -1] } else { vector![-1, 0] };
 
@@ -115,7 +115,7 @@ mod tests {
     fn test_rectangle_board_tile_ports() {
         let board = RectangleBoard::new(3, 2, 2);
 
-        let ports = iproduct!(0..2, 0..3).map(|(y, x)| board.loc_ports(vector![x, y])).collect_vec();
+        let ports = iproduct!(0..2, 0..3).map(|(y, x)| board.loc_ports(&vector![x, y])).collect_vec();
         let expected = iproduct!(0..2, 0..3).map(|(y, x)| vec![
             (vector![x + 0, y + 0], vector![1, 0]),
             (vector![x + 0, y + 0], vector![2, 0]),
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn test_rectangle_board_port_tiles_horz_sep() {
         let board = RectangleBoard::new(3, 2, 2);
-        let mut locs = board.port_locs((vector![2, 0], vector![0, 1]));
+        let mut locs = board.port_locs(&(vector![2, 0], vector![0, 1]));
         let mut expected = vec![vector![1, 0], vector![2, 0]];
         locs.sort_by_key(|vec| *AsRef::<[u32; 2]>::as_ref(&vec));
         expected.sort_by_key(|vec| *AsRef::<[u32; 2]>::as_ref(&vec));
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_rectangle_board_port_tiles_vert_sep() {
         let board = RectangleBoard::new(3, 2, 2);
-        let mut locs = board.port_locs((vector![1, 1], vector![2, 0]));
+        let mut locs = board.port_locs(&(vector![1, 1], vector![2, 0]));
         let mut expected = vec![vector![1, 0], vector![1, 1]];
         locs.sort_by_key(|vec| *AsRef::<[u32; 2]>::as_ref(&vec));
         expected.sort_by_key(|vec| *AsRef::<[u32; 2]>::as_ref(&vec));
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn test_rectangle_board_port_tiles_left() {
         let board = RectangleBoard::new(3, 2, 2);
-        let mut locs = board.port_locs((vector![0, 0], vector![0, 1]));
+        let mut locs = board.port_locs(&(vector![0, 0], vector![0, 1]));
         let mut expected = vec![vector![0, 0]];
         locs.sort_by_key(|vec| *AsRef::<[u32; 2]>::as_ref(&vec));
         expected.sort_by_key(|vec| *AsRef::<[u32; 2]>::as_ref(&vec));
@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn test_rectangle_board_port_tiles_right() {
         let board = RectangleBoard::new(3, 2, 2);
-        let mut locs = board.port_locs((vector![3, 0], vector![0, 1]));
+        let mut locs = board.port_locs(&(vector![3, 0], vector![0, 1]));
         let mut expected = vec![vector![2, 0]];
         locs.sort_by_key(|vec| *AsRef::<[u32; 2]>::as_ref(&vec));
         expected.sort_by_key(|vec| *AsRef::<[u32; 2]>::as_ref(&vec));
