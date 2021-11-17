@@ -3,7 +3,7 @@ use itertools::Itertools;
 use std::hash::Hash;
 use std::fmt::Debug;
 use enum_dispatch::enum_dispatch;
-
+use serde::{Deserialize, Serialize};
 
 use crate::board::{Board, RectangleBoard};
 use crate::game::Game;
@@ -21,12 +21,13 @@ where
 {}
 
 #[enum_dispatch(GenericBoardState)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseBoardState {
     Normal(BoardState<RectangleBoard, RegularTile<4>>)
 }
 
 /// The state of the board
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BoardState<B: Board, T> {
     tiles: FnvHashMap<B::TLoc, T>,
     players: Vec<Option<B::Port>>,

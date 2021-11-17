@@ -4,26 +4,29 @@ use nalgebra as na;
 use nalgebra::vector;
 use itertools::{Itertools, chain, iproduct};
 use enum_dispatch::enum_dispatch;
+use serde::{Deserialize, Serialize};
 
 use std::fmt::Debug;
 use std::hash::Hash;
 
 #[enum_dispatch]
-pub trait Port {}
+pub trait Port: Serialize + for<'a> Deserialize<'a> {}
 
 impl Port for (Vec2u, Vec2u) {}
 
 #[enum_dispatch(Port)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BasePort {
     Vec2uPair((Vec2u, Vec2u))
 }
 
 #[enum_dispatch]
-pub trait TLoc {}
+pub trait TLoc: Serialize + for<'a> Deserialize<'a> {}
 
 impl TLoc for Vec2u {}
 
 #[enum_dispatch(TLoc)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseTLoc {
     Vec2u(Vec2u)
 }
@@ -34,12 +37,13 @@ pub trait GenericBoard {}
 impl<B: Board> GenericBoard for B {}
 
 #[enum_dispatch(GenericBoard)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 enum BaseBoard {
     RectangleBoard(RectangleBoard)
 }
 
 /// A board in the path game, parameterized by player location (port) type, tile location type, and tile kind type
-pub trait Board {
+pub trait Board: Clone + Debug + Serialize + for<'a> Deserialize<'a> {
     type TLoc: Clone + Debug + Eq + Hash + TLoc;
     type Port: Clone + Debug + Eq + Hash + Port;
     type Kind: Clone + Debug + Eq + Hash + Kind;
@@ -72,7 +76,7 @@ pub trait Board {
 pub struct PortsPerEdgeTileConfig(pub u32);
 
 /// A rectangular board with square tiles.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RectangleBoard {
     width: u32,
     height: u32,

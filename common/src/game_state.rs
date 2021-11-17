@@ -2,8 +2,9 @@ use std::collections::VecDeque;
 use enum_dispatch::enum_dispatch;
 use fnv::FnvHashMap;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 
-use crate::{board::{Board, RectangleBoard}, board_state::BoardState, game::{Game, PathGame}, player_state::PlayerState, tile::{RegularTile, Tile}};
+use crate::{board::{Board, RectangleBoard}, board_state::BoardState, game::{Game, PathGame}, player_state::{PlayerState, PlayerStateE}, tile::{RegularTile, Tile}};
 
 #[enum_dispatch]
 pub trait GenericGameState {}
@@ -11,17 +12,38 @@ pub trait GenericGameState {}
 impl<G: Game> GenericGameState for GameState<G> {}
 
 #[enum_dispatch(GenericGameState)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseGameState {
     Normal(GameState<PathGame<RectangleBoard, RegularTile<4>>>)
 }
 
+#[enum_dispatch]
+pub trait GenericVisibleGameState {}
+
+impl<G: Game> GenericVisibleGameState for VisibleGameState<G> {}
+
+#[enum_dispatch(GenericVisibleGameState)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum BaseVisibleGameState {
+    Normal(VisibleGameState<PathGame<RectangleBoard, RegularTile<4>>>)
+}
+
 /// The state of the game
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GameState<G: Game> {
     board_state: BoardState<G::Board, G::Tile>,
     player_states: Vec<Option<PlayerState<G::Tile>>>,
     curr_player: u32,
-    tiles: FnvHashMap<G::Kind, VecDeque<G::Tile>>
+    tiles: FnvHashMap<G::Kind, VecDeque<G::Tile>>,
+}
+
+/// The state of the game visible to a specific player
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VisibleGameState<G: Game> {
+    board_state: BoardState<G::Board, G::Tile>,
+    player_state: Vec<Option<PlayerStateE<G::Tile>>>,
+    curr_player: u32,
+    num_tiles: FnvHashMap<G::Kind, u32>,
 }
 
 impl<G: Game> GameState<G> {

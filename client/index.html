@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Client</title>
+  </head>
+  <body>
+    <script type="module">
+      import init from "/pkg/client.js";
+      init("/pkg/client_bg.wasm");
+    </script>
+    <p id="usernames"></p>
+  </body>
+</html>

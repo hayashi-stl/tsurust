@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use enum_dispatch::enum_dispatch;
 use fnv::FnvHashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::{board::{Board, Port, RectangleBoard, TLoc}, game_state::GameState, tile::{Kind, RegularTile, Tile}};
 use crate::game_state::BaseGameState;
@@ -23,16 +24,17 @@ where
 }
 
 #[enum_dispatch(GenericGame)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseGame {
     Normal(PathGame<RectangleBoard, RegularTile<4>>)
 }
 
-pub trait Game {
+pub trait Game: Clone + Debug + Serialize {
     type TLoc: Clone + Debug + Eq + Hash + TLoc;
     type Port: Clone + Debug + Eq + Hash + Port;
     type Kind: Clone + Debug + Eq + Ord + Hash + Kind;
     type TileConfig: Clone + Debug;
-    type Board: Clone + Debug + Board<TLoc = Self::TLoc, Port = Self::Port, Kind = Self::Kind, TileConfig = Self::TileConfig>;
+    type Board: Clone + Debug +  Board<TLoc = Self::TLoc, Port = Self::Port, Kind = Self::Kind, TileConfig = Self::TileConfig>;
     type Tile: Clone + Debug + Tile<Kind = Self::Kind, TileConfig = Self::TileConfig>;
 
     /// The game's board
@@ -51,10 +53,13 @@ pub trait Game {
 }
 
 /// A definition for a path game
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PathGame<B: Board, T> {
+    #[serde(bound = "")]
     board: B,
+    #[serde(bound = "")]
     start_ports: Vec<<B as Board>::Port>,
+    #[serde(bound = "")]
     tiles_per_player: FnvHashMap<<B as Board>::Kind, u32>,
     phantom: PhantomData<T>,
 }

@@ -1,0 +1,6 @@
+[tasks.default]
+dependencies = ["wasm"]
+
+[tasks.wasm]
+command = "wasm-pack"
+args = ["build", "--target", "web"]

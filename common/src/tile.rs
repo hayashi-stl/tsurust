@@ -2,15 +2,17 @@ use std::{collections::HashSet, fmt::Debug};
 use std::hash::Hash;
 use enum_dispatch::enum_dispatch;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 
 use crate::board::PortsPerEdgeTileConfig;
 
 #[enum_dispatch]
-pub trait Kind {}
+pub trait Kind: Serialize + for<'a> Deserialize<'a> {}
 
 impl Kind for () {}
 
 #[enum_dispatch(Kind)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseKind {
     Unit(())
 }
@@ -21,12 +23,13 @@ pub trait GenericTile {}
 impl<T: Tile> GenericTile for T {}
 
 #[enum_dispatch(GenericTile)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseTile {
     RegularTile4(RegularTile<4>)
 }
 
 /// A tile in the path game, parameterized by kind
-pub trait Tile: Clone + Eq + Ord + Hash {
+pub trait Tile: Clone + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
     type Kind: Clone + Debug + Eq + Hash + Kind;
     type TileConfig: Clone + Debug;
 
@@ -73,7 +76,7 @@ pub trait Tile: Clone + Eq + Ord + Hash {
 }
 
 /// A regular-polygon-shaped tile with `EDGES` edges
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct RegularTile<const EDGES: u32> {
     connections: Vec<u32>
 }
