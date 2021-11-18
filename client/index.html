@@ -3,15 +3,25 @@
   <head>
     <meta charset="UTF-8">
     <title>Client</title>
+    <link rel="stylesheet" href="style.css"/>
   </head>
   <body>
     <script type="module">
       import init from "/pkg/client.js";
       init("/pkg/client_bg.wasm");
     </script>
-    <p id="usernames"></p>
-    <input type="button" id="start" value="Start Game"/>
-    <svg id="svg_root" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6 6" width="400" height="400">
-    </svg>
+    <div class="screen">
+      <div class="top">
+        <div class="main-panel">
+          <svg id="svg_root" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 7 7" width="400" height="400">
+          </svg>
+        </div>
+        <div class="right-panel">
+          <p id="usernames"></p>
+          <input type="button" id="start" value="Start Game"/>
+        </div>
+      </div>
+      <div class="bottom-panel"></div>
+    </div>
   </body>
 </html>

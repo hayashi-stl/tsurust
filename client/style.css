@@ -1,0 +1,25 @@
+.screen {
+    display: flex;
+    flex-direction: column;
+}
+
+.bottom-panel {
+    flex: 0 0 200px;
+    background-color: red;
+}
+
+.top {
+    flex: auto;
+    display: flex;
+    flex-direction: row;
+}
+
+.right-panel {
+    flex: 0 0 200px;
+    background-color: green;
+}
+
+.main-panel {
+    flex: auto;
+    background-color: blue;
+}
