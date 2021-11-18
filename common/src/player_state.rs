@@ -92,4 +92,15 @@ impl<T: Tile> PlayerState<T> {
     pub fn remove_all_tiles(&mut self) -> Vec<T> {
         self.tiles.values_mut().flat_map(|v| std::mem::take(v)).collect_vec()
     }
+
+    /// Returns the state of `player` visible to `looker`
+    pub fn visible_state(&self, player: u32, looker: u32) -> PlayerStateE<T> {
+        if player == looker {
+            PlayerStateE::Private(self.clone())
+        } else {
+            PlayerStateE::Public(PublicPlayerState{
+                num_tiles: self.tiles.iter().map(|(kind, tiles)| (kind.clone(), tiles.len() as u32)).collect()
+            })
+        }
+    }
 }

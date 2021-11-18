@@ -7,9 +7,20 @@ use serde::{Deserialize, Serialize};
 use crate::{board::{Board, RectangleBoard}, board_state::BoardState, game::{Game, PathGame}, player_state::{PlayerState, PlayerStateE}, tile::{RegularTile, Tile}};
 
 #[enum_dispatch]
-pub trait GenericGameState {}
+pub trait GenericGameState {
+    /// The state of the game visible to `looker`
+    fn visible_state(&self, looker: u32) -> BaseVisibleGameState;
+}
 
-impl<G: Game> GenericGameState for GameState<G> {}
+impl<G> GenericGameState for GameState<G>
+where
+    G: Game,
+    BaseVisibleGameState: From<VisibleGameState<G>>,
+{
+    fn visible_state(&self, looker: u32) -> BaseVisibleGameState {
+        self.visible_state(looker).into()
+    }
+}
 
 #[enum_dispatch(GenericGameState)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -82,6 +93,20 @@ impl<G: Game> GameState<G> {
     /// The state of a specific player. None if the player is dead.
     pub fn player_state(&self, player: u32) -> Option<&PlayerState<G::Tile>> {
         self.player_states[player as usize].as_ref()
+    }
+
+    /// The state of the game visible to `looker`
+    pub fn visible_state(&self, looker: u32) -> VisibleGameState<G> {
+        VisibleGameState {
+            board_state: self.board_state().clone(),
+            player_state: self.player_states.iter().enumerate().map(|(player, maybe_state)|
+                maybe_state.as_ref().map(|state| state.visible_state(player as u32, looker)))
+                .collect_vec(),
+            curr_player: self.curr_player,
+            num_tiles: self.tiles.iter().map(|(kind, tiles)|
+                (kind.clone(), tiles.len() as u32))
+                .collect()
+        }
     }
 
     /// Number of players in the game

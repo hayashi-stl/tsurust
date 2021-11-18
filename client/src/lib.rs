@@ -1,19 +1,29 @@
 pub mod processor;
+pub mod render;
+pub mod game;
 
 use common::message::Request;
 use common::message::Response;
+use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use web_sys::Element;
 use web_sys::ErrorEvent;
+use web_sys::Event;
 use web_sys::HtmlInputElement;
 use web_sys::{BinaryType, MessageEvent, WebSocket, console};
 use std::iter;
+use std::sync::Arc;
+use std::sync::Mutex;
 
+use crate::game::GameWorld;
 use crate::processor::process_response;
+use crate::processor::send_request;
 
+#[macro_export]
 macro_rules! console_log {
     ($($t:tt)*) => {
-        log(&format_args!($($t)*).to_string())
+        $crate::log(&format_args!($($t)*).to_string())
     };
 }
 
@@ -31,35 +41,41 @@ extern "C" {
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
+/// Adds an event listener to an element.
+/// WARNING: This leaks the callback.
+fn add_event_listener<E: 'static + FromWasmAbi>(element: &Element, event_name: &str, callback: impl FnMut(E) + 'static) {
+    let closure = Closure::wrap(Box::new(callback) as Box<dyn FnMut(E)>);
+    element.add_event_listener_with_callback(event_name, closure.as_ref().unchecked_ref()).unwrap();
+    closure.forget()
+}
+
 fn run() -> Result<(), JsValue> {
     let ws = WebSocket::new(&format!("ws://{}/", common::HOST_ADDRESS))?;
     ws.set_binary_type(BinaryType::Arraybuffer);
+    let game_world = Arc::new(Mutex::new(GameWorld::new()));
 
     let username = web_sys::window().unwrap().prompt_with_message("Enter a username")
         .unwrap_or(None)
         .unwrap_or("Guest".to_owned());
-    let username_req = Request::SetUsername{ name: username.clone() };
-    let username_bytes = bincode::serialize(&username_req).expect("Serialization went wrong");
-    match ws.send_with_u8_array(&username_bytes) {
-        Ok(_) => {}
-        Err(e) => console_log!("Error sending message: {:?}", e),
-    }
+    send_request(&Request::SetUsername{ name: username.clone() }, &ws);
 
     let document = web_sys::window().unwrap().document().unwrap();
+
+    let cws = ws.clone();
+    add_event_listener(&document.get_element_by_id("start").unwrap(), "click", move |_: Event| {
+        send_request(&Request::StartGame, &cws);
+    });
     
-    let mut cws = ws.clone();
+    let cws = ws.clone();
+    let cgw = Arc::clone(&game_world);
     let on_message = Closure::wrap(Box::new(move |e: MessageEvent| {
         if let Ok(msg) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
             let array = js_sys::Uint8Array::new(&msg);
             let msg = bincode::deserialize::<Response>(&array.to_vec()).unwrap();
             console_log!("received response: {:?}", msg);
             
-            for req in process_response(&msg) {
-                let bytes = bincode::serialize(&msg).expect("Serialization went wrong");
-                match cws.send_with_u8_array(&bytes) {
-                    Ok(_) => {}
-                    Err(e) => console_log!("Error sending message: {:?}", e),
-                }
+            for req in process_response(msg, &mut cgw.lock().unwrap()) {
+                send_request(&req, &cws);
             }
         } 
     }) as Box<dyn FnMut(MessageEvent)>);

@@ -3,4 +3,4 @@ dependencies = ["wasm"]
 
 [tasks.wasm]
 command = "wasm-pack"
-args = ["build", "--target", "web"]
+args = ["build", "--debug", "--target", "web"]

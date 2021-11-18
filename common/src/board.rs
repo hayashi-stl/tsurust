@@ -5,6 +5,7 @@ use nalgebra::vector;
 use itertools::{Itertools, chain, iproduct};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
+use getset::{CopyGetters, Getters};
 
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -38,8 +39,14 @@ impl<B: Board> GenericBoard for B {}
 
 #[enum_dispatch(GenericBoard)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-enum BaseBoard {
+pub enum BaseBoard {
     RectangleBoard(RectangleBoard)
+}
+
+pub trait AllBoardRenderer {
+    type Return;
+
+    fn render(&self, board: &BaseBoard) -> Self::Return;
 }
 
 /// A board in the path game, parameterized by player location (port) type, tile location type, and tile kind type
@@ -76,10 +83,13 @@ pub trait Board: Clone + Debug + Serialize + for<'a> Deserialize<'a> {
 pub struct PortsPerEdgeTileConfig(pub u32);
 
 /// A rectangular board with square tiles.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, CopyGetters)]
 pub struct RectangleBoard {
+    #[getset(get_copy = "pub")]
     width: u32,
+    #[getset(get_copy = "pub")]
     height: u32,
+    #[getset(get_copy = "pub")]
     ports_per_edge: u32
 }
 

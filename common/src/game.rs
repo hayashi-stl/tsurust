@@ -7,19 +7,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::{board::{Board, Port, RectangleBoard, TLoc}, game_state::GameState, tile::{Kind, RegularTile, Tile}};
 use crate::game_state::BaseGameState;
+use crate::board::BaseBoard;
 
 #[enum_dispatch]
 pub trait GenericGame {
     fn new_state(&self, num_players: u32) -> BaseGameState;
+
+    fn board(&self) -> BaseBoard;
 }
 
 impl<G> GenericGame for G
 where
     G: Game,
     BaseGameState: From<GameState<G>>,
+    BaseBoard: From<G::Board>,
 {
     fn new_state(&self, num_players: u32) -> BaseGameState {
         GameState::new(self, num_players).into()
+    }
+
+    fn board(&self) -> BaseBoard {
+        self.board().clone().into()
     }
 }
 

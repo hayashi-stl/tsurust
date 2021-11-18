@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use async_std::sync::{Mutex, MutexGuard};
-use common::message::{Request, Response};
+use common::{game_state::GenericGameState, message::{Request, Response}};
 use fnv::FnvHashMap;
 use itertools::Itertools;
 use log::*;
@@ -13,13 +13,13 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
     match req {
         Request::SetUsername{ name } => {
             state.set_username(requester, name.clone());
-            state.game_mut().add_player(requester, name);
-
-            let usernames = state.game().players().iter().map(|player| player.username().clone())
-                .collect_vec();
-            state.peers().iter().map(|(addr, peer)| {
-                (*addr, vec![Response::Usernames{ names: usernames.clone() }])
-            }).collect()
+            if state.game_mut().add_player(requester, name) {
+                let usernames = state.game().players().iter().map(|player| player.username().clone())
+                    .collect_vec();
+                state.peers().iter().map(|(addr, peer)| {
+                    (*addr, vec![Response::Usernames{ names: usernames.clone() }])
+                }).collect()
+            } else { FnvHashMap::default() }
         },
 
         Request::RemovePeer{ addr } => {
@@ -39,7 +39,14 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
 
         Request::StartGame => {
             state.game_mut().start();
-            FnvHashMap::default()
+            state.peers().iter().map(|(addr, _)| {(*addr,
+                if let Some(index) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                    Response::State {
+                        game: state.game().game().clone(),
+                        state: state.game().state().as_ref().expect("Game should have started").visible_state(index as u32)
+                    }
+                ]} else { vec![] }
+            )}).collect()
         }
 
         _ => FnvHashMap::default(),
