@@ -6,27 +6,33 @@ use itertools::{Itertools, chain, iproduct};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use getset::{CopyGetters, Getters};
+use crate::{wrap_functions, impl_wrap_functions};
 
 use std::fmt::Debug;
 use std::hash::Hash;
 
 #[enum_dispatch]
-pub trait Port: Serialize + for<'a> Deserialize<'a> {}
+pub trait Port: Serialize + for<'a> Deserialize<'a> {
+    wrap_functions!(BasePort);
+}
 
-impl Port for (Vec2u, Vec2u) {}
+impl Port for (Vec2u, Vec2u) {
+    impl_wrap_functions!(BasePort, Vec2uPair);
+}
 
-#[enum_dispatch(Port)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BasePort {
     Vec2uPair((Vec2u, Vec2u))
 }
 
-#[enum_dispatch]
-pub trait TLoc: Serialize + for<'a> Deserialize<'a> {}
+pub trait TLoc: Serialize + for<'a> Deserialize<'a> {
+    wrap_functions!(BaseTLoc);
+}
 
-impl TLoc for Vec2u {}
+impl TLoc for Vec2u {
+    impl_wrap_functions!(BaseTLoc, Vec2u);
+}
 
-#[enum_dispatch(TLoc)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseTLoc {
     Vec2u(Vec2u)
@@ -43,10 +49,22 @@ pub enum BaseBoard {
     RectangleBoard(RectangleBoard)
 }
 
-pub trait AllBoardRenderer {
-    type Return;
+#[macro_export]
+macro_rules! for_each_board {
+    (internal ($dollar:tt) $name:ident $ty:ident => $($body:tt)*) => {
+        macro_rules! __mac {
+            ($dollar($dollar $name:path: $dollar $ty:ty,)*) => {$($body)*}
+        }
+        __mac! {
+            $crate::board::BaseBoard::RectangleBoard: $crate::board::RectangleBoard,
+        }
+    };
 
-    fn render(&self, board: &BaseBoard) -> Self::Return;
+    ($name:ident, $ty:ident => $($body:tt)*) => {
+        $crate::for_each_board! {
+            internal ($) $name $ty => $($body)*
+        }
+    };
 }
 
 /// A board in the path game, parameterized by player location (port) type, tile location type, and tile kind type

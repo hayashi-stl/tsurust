@@ -1,25 +1,43 @@
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+}
+
+.game-svg {
+    width: 100%;
+    height: 100%;
+}
+
 .screen {
     display: flex;
     flex-direction: column;
+    width: 100%;
+    height: 100%;
 }
 
 .bottom-panel {
     flex: 0 0 200px;
-    background-color: red;
+    overflow: hidden;
+    background-color: rgb(119, 141, 158);
+    display: flex;
+    flex-direction: row;
 }
 
 .top {
     flex: auto;
     display: flex;
+    overflow: hidden;
     flex-direction: row;
 }
 
 .right-panel {
     flex: 0 0 200px;
-    background-color: green;
+    background-color: rgb(169, 184, 224);
 }
 
 .main-panel {
     flex: auto;
-    background-color: blue;
+    background-color: white;
+    display: flex;
 }

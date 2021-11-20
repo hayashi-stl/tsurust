@@ -5,19 +5,22 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::board::PortsPerEdgeTileConfig;
+use crate::{wrap_functions, impl_wrap_functions};
 
 #[enum_dispatch]
-pub trait Kind: Serialize + for<'a> Deserialize<'a> {}
+pub trait Kind: Serialize + for<'a> Deserialize<'a> {
+    wrap_functions!(BaseKind);
+}
 
-impl Kind for () {}
+impl Kind for () {
+    impl_wrap_functions!(BaseKind, Unit);
+}
 
-#[enum_dispatch(Kind)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseKind {
     Unit(())
 }
 
-#[enum_dispatch]
 pub trait GenericTile {}
 
 impl<T: Tile> GenericTile for T {}
@@ -26,6 +29,24 @@ impl<T: Tile> GenericTile for T {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BaseTile {
     RegularTile4(RegularTile<4>)
+}
+
+#[macro_export]
+macro_rules! for_each_tile {
+    (internal ($dollar:tt) $name:ident $ty:ident => $($body:tt)*) => {
+        macro_rules! __mac {
+            ($dollar($dollar $name:path: $dollar $ty:ty,)*) => {$($body)*}
+        }
+        __mac! {
+            $crate::tile::BaseTile::RegularTile4: $crate::tile::RegularTile::<4>,
+        }
+    };
+
+    ($name:ident, $ty:ident => $($body:tt)*) => {
+        $crate::for_each_tile! {
+            internal ($) $name $ty => $($body)*
+        }
+    };
 }
 
 /// A tile in the path game, parameterized by kind

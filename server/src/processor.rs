@@ -13,13 +13,12 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
     match req {
         Request::SetUsername{ name } => {
             state.set_username(requester, name.clone());
-            if state.game_mut().add_player(requester, name) {
-                let usernames = state.game().players().iter().map(|player| player.username().clone())
-                    .collect_vec();
-                state.peers().iter().map(|(addr, peer)| {
-                    (*addr, vec![Response::Usernames{ names: usernames.clone() }])
-                }).collect()
-            } else { FnvHashMap::default() }
+            let added = state.game_mut().add_player(requester, name);
+            let usernames = state.game().players().iter().map(|player| player.username().clone())
+                .collect_vec();
+            state.peers().iter().flat_map(|(addr, peer)| {
+                (added || requester == *addr).then(|| (*addr, vec![Response::Usernames{ names: usernames.clone() }]))
+            }).collect()
         },
 
         Request::RemovePeer{ addr } => {

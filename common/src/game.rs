@@ -37,6 +37,24 @@ pub enum BaseGame {
     Normal(PathGame<RectangleBoard, RegularTile<4>>)
 }
 
+#[macro_export]
+macro_rules! for_each_game {
+    (internal ($dollar:tt) $name:ident $ty:ident => $($body:tt)*) => {
+        macro_rules! __mac {
+            ($dollar($dollar $name:path: $dollar $ty:ty,)*) => {$($body)*}
+        }
+        __mac! {
+            $crate::game::BaseGame::Normal: $crate::game::PathGame::<$crate::board::RectangleBoard, $crate::tile::RegularTile::<4>>,
+        }
+    };
+
+    ($name:ident, $ty:ident => $($body:tt)*) => {
+        $crate::for_each_game! {
+            internal ($) $name $ty => $($body)*
+        }
+    };
+}
+
 pub trait Game: Clone + Debug + Serialize {
     type TLoc: Clone + Debug + Eq + Hash + TLoc;
     type Port: Clone + Debug + Eq + Hash + Port;
