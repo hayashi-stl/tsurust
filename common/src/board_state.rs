@@ -5,20 +5,26 @@ use std::fmt::Debug;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
-use crate::board::{Board, RectangleBoard};
+use crate::board::{BasePort, Board, RectangleBoard, Port};
 use crate::game::Game;
 use crate::tile::{RegularTile, Tile};
 
 #[enum_dispatch]
-pub trait GenericBoardState {}
+pub trait GenericBoardState {
+    fn player_port(&self, player: u32) -> Option<BasePort>;
+}
 
 impl<K, C, B, T> GenericBoardState for BoardState<B, T>
 where
     K: Clone + Debug + Eq + Hash,
     C: Clone + Debug,
     B: Clone + Debug + Board<Kind = K, TileConfig = C>,
-    T: Clone + Debug + Tile<Kind = K, TileConfig = C>
-{}
+    T: Clone + Debug + Tile<Kind = K, TileConfig = C>,
+{
+    fn player_port(&self, player: u32) -> Option<BasePort> {
+        self.player_port(player).map(|port| port.clone().wrap_base())
+    }
+}
 
 #[enum_dispatch(GenericBoardState)]
 #[derive(Clone, Debug, Serialize, Deserialize)]

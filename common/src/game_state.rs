@@ -1,10 +1,12 @@
 use std::collections::VecDeque;
 use enum_dispatch::enum_dispatch;
 use fnv::FnvHashMap;
+use getset::{CopyGetters, Getters};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{board::{Board, RectangleBoard}, board_state::BoardState, game::{Game, PathGame}, player_state::{PlayerState, PlayerStateE}, tile::{RegularTile, Tile}};
+use crate::board_state::BaseBoardState;
 
 #[enum_dispatch]
 pub trait GenericGameState {
@@ -29,9 +31,33 @@ pub enum BaseGameState {
 }
 
 #[enum_dispatch]
-pub trait GenericVisibleGameState {}
+pub trait GenericVisibleGameState {
+    /// Index of the player viewing this state
+    fn index(&self) -> u32;
 
-impl<G: Game> GenericVisibleGameState for VisibleGameState<G> {}
+    /// Number of players in the game
+    fn num_players(&self) -> u32;
+
+    // State of the board. This is all public information.
+    fn board_state(&self) -> BaseBoardState;
+}
+
+impl<G: Game> GenericVisibleGameState for VisibleGameState<G>
+where
+    BaseBoardState: From<BoardState<G::Board, G::Tile>>
+{
+    fn index(&self) -> u32 {
+        self.index()
+    }
+
+    fn num_players(&self) -> u32 {
+        self.player_states.len() as u32
+    }
+
+    fn board_state(&self) -> BaseBoardState {
+        self.board_state().clone().into()
+    }
+}
 
 #[enum_dispatch(GenericVisibleGameState)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -40,20 +66,24 @@ pub enum BaseVisibleGameState {
 }
 
 /// The state of the game
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Getters, Serialize, Deserialize)]
 pub struct GameState<G: Game> {
+    #[getset(get = "pub")]
     board_state: BoardState<G::Board, G::Tile>,
     player_states: Vec<Option<PlayerState<G::Tile>>>,
-    curr_player: u32,
+    turn_player: u32,
     tiles: FnvHashMap<G::Kind, VecDeque<G::Tile>>,
 }
 
 /// The state of the game visible to a specific player
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Getters, CopyGetters, Serialize, Deserialize)]
 pub struct VisibleGameState<G: Game> {
+    #[getset(get = "pub")]
     board_state: BoardState<G::Board, G::Tile>,
-    player_state: Vec<Option<PlayerStateE<G::Tile>>>,
-    curr_player: u32,
+    player_states: Vec<Option<PlayerStateE<G::Tile>>>,
+    #[getset(get_copy = "pub")]
+    index: u32,
+    turn_player: u32,
     num_tiles: FnvHashMap<G::Kind, u32>,
 }
 
@@ -70,7 +100,7 @@ impl<G: Game> GameState<G> {
         let mut state = Self {
             board_state: BoardState::new(game, num_players),
             player_states: vec![Some(PlayerState::new(game)); num_players as usize],
-            curr_player: 0,
+            turn_player: 0,
             tiles,
         };
 
@@ -85,11 +115,6 @@ impl<G: Game> GameState<G> {
         state
     }
 
-    /// The state of the game's board
-    pub fn board_state(&self) -> &BoardState<G::Board, G::Tile> {
-        &self.board_state
-    }
-
     /// The state of a specific player. None if the player is dead.
     pub fn player_state(&self, player: u32) -> Option<&PlayerState<G::Tile>> {
         self.player_states[player as usize].as_ref()
@@ -99,10 +124,11 @@ impl<G: Game> GameState<G> {
     pub fn visible_state(&self, looker: u32) -> VisibleGameState<G> {
         VisibleGameState {
             board_state: self.board_state().clone(),
-            player_state: self.player_states.iter().enumerate().map(|(player, maybe_state)|
+            player_states: self.player_states.iter().enumerate().map(|(player, maybe_state)|
                 maybe_state.as_ref().map(|state| state.visible_state(player as u32, looker)))
                 .collect_vec(),
-            curr_player: self.curr_player,
+            index: looker,
+            turn_player: self.turn_player,
             num_tiles: self.tiles.iter().map(|(kind, tiles)|
                 (kind.clone(), tiles.len() as u32))
                 .collect()
@@ -115,8 +141,8 @@ impl<G: Game> GameState<G> {
     }
 
     /// Who's turn it is
-    pub fn curr_player(&self) -> u32 {
-        self.curr_player
+    pub fn turn_player(&self) -> u32 {
+        self.turn_player
     }
 
     /// Gets the next tile by kind and updates the state. None if there's no tiles left of that kind
@@ -165,10 +191,10 @@ impl<G: Game> GameState<G> {
     fn redistribute_tiles(&mut self, game: &G) {
         for kind in game.board().all_kinds() {
             let num_tiles = game.num_tiles_per_player(&kind);
-            let curr_player = self.curr_player();
+            let turn_player = self.turn_player();
             let num_players = self.num_players();
             let deal_tile_order = (0..num_tiles)
-                .flat_map(|i| (0..num_players).map(move |j| ((j + curr_player + 1) % num_players, i)))
+                .flat_map(|i| (0..num_players).map(move |j| ((j + turn_player + 1) % num_players, i)))
                 .flat_map(|(player, i)| self.player_state(player)
                     .filter(|state| state.num_tiles_by_kind(&kind) <= i)
                     .map(|_| player))
@@ -204,9 +230,9 @@ impl<G: Game> GameState<G> {
     /// Have the current player take a turn by placing their token on the board on port `port`.
     /// The turn is processed and then advances to the next player.
     pub fn take_turn_placing_player(&mut self, game: &G, port: &G::Port) {
-        self.place_player(self.curr_player(), port);
+        self.place_player(self.turn_player(), port);
         // All players should still be alive
-        self.curr_player = (self.curr_player + 1) % self.num_players();
+        self.turn_player = (self.turn_player + 1) % self.num_players();
     }
 
     /// Can `player` place a tile of kind `kind` from index `index` in their hand to location `loc`?
@@ -223,20 +249,20 @@ impl<G: Game> GameState<G> {
     /// Have the current player take a turn by placing a tile of kind `kind` from index `index` in their hand to location `loc`.
     /// The turn is processed and then advances to the next player.
     pub fn take_turn_placing_tile(&mut self, game: &G, kind: &G::Kind, index: u32, loc: &G::TLoc) {
-        self.player_place_tile(self.curr_player(), kind, index, loc);
+        self.player_place_tile(self.turn_player(), kind, index, loc);
         let dead = self.advance_players(game.board(), loc);
         let players_died = dead.len() > 0;
         self.handle_dead_players(game, dead);
         if players_died {
             self.redistribute_tiles(game);
         } else {
-            self.deal_tile(self.curr_player, kind);
+            self.deal_tile(self.turn_player, kind);
         }
 
-        if let Some(next) = (0..self.num_players()).cycle().skip(self.curr_player() as usize + 1).take(self.num_players() as usize)
+        if let Some(next) = (0..self.num_players()).cycle().skip(self.turn_player() as usize + 1).take(self.num_players() as usize)
             .filter(|player| self.player_state(*player).is_some()).next()
         {
-            self.curr_player = next;
+            self.turn_player = next;
         } else {
             unimplemented!("What to do when all players are dead")
         }

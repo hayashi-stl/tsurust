@@ -115,8 +115,12 @@ fn run() -> Result<(), JsValue> {
     let on_frame = Rc::new(RefCell::new(None));
     let on_frame_clone = Rc::clone(&on_frame);
     let cgw = Arc::clone(&game_world);
+    let cws = ws.clone();
     *on_frame.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        cgw.lock().unwrap().update();
+        for req in cgw.lock().unwrap().update() {
+            send_request(&req, &cws);
+        }
+
         request_animation_frame(on_frame_clone.borrow().as_ref().unwrap());
     }) as Box<dyn FnMut()>));
     request_animation_frame(on_frame.borrow().as_ref().unwrap());

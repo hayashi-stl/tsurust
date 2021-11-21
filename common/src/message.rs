@@ -28,4 +28,6 @@ pub enum Response {
     Usernames{ names: Vec<String> },
     /// Responds with the game's state
     State{ game: BaseGame, state: BaseVisibleGameState },
+    /// Player `player` has placed a token on port `port`.
+    PlacedToken{ player: u32, port: BasePort },
 }

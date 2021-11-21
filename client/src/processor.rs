@@ -20,6 +20,11 @@ pub fn process_response(resp: Response, game_world: &mut GameWorld) -> Vec<Reque
             vec![]
         }
 
+        Response::PlacedToken { player, port } => {
+            game_world.set_token_position(player, &port);
+            vec![]
+        }
+
         _ => vec![]
     }
 }

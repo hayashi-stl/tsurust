@@ -48,6 +48,14 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
             )}).collect()
         }
 
+        Request::PlaceToken{ player, port } => {
+            state.peers().iter().map(|(addr, _)| {(*addr,
+                if let Some(_) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                    Response::PlacedToken { player, port: port.clone() }
+                ]} else { vec![] }
+            )}).collect()
+        }
+
         _ => FnvHashMap::default(),
     }
 }
