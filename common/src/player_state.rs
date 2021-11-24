@@ -1,63 +1,63 @@
 use fnv::FnvHashMap;
+use getset::Getters;
 use itertools::Itertools;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
 use crate::{board::Board, game::Game, tile::{RegularTile, Tile}};
+use crate::tile::{BaseKind, BaseTile, Kind};
 
-#[enum_dispatch]
-pub trait GenericPlayerState {}
+#[macro_export]
+macro_rules! for_each_player_state {
+    (internal ($dollar:tt) $path:ident $name:ident $ty:ident => $($body:tt)*) => {
+        macro_rules! __mac {
+            ($dollar(($dollar ($dollar $path:tt)*) :: $dollar $name:ident: $dollar $ty:ty,)*) => {$($body)*}
+        }
+        __mac! {
+            ($crate::player_state::BasePlayerState)::RegularTile4: $crate::player_state::PlayerState<$crate::tile::RegularTile<4>>,
+        }
+    };
 
-impl<T: Tile> GenericPlayerState for PlayerState<T> {}
-
-#[enum_dispatch(GenericPlayerState)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BasePlayerState {
-    RegularTile4(PlayerState<RegularTile<4>>)
+    ($path:ident::$name:ident, $ty:ident => $($body:tt)*) => {
+        $crate::for_each_player_state! {
+            internal ($) $path $name $ty => $($body)*
+        }
+    };
 }
 
-#[enum_dispatch]
-pub trait GenericPublicPlayerState {}
+for_each_player_state! {
+    p::x, t =>
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum BasePlayerState {
+        $($x($t)),*
+    }
 
-impl<T: Tile> GenericPublicPlayerState for PublicPlayerState<T> {}
+    impl BasePlayerState {
+        pub fn tiles_vec(&self) -> Vec<(BaseKind, Vec<BaseTile>)> {
+            match self {
+                $($($p)*::$x(s) => s.tiles_vec().into_iter()
+                    .map(|(k, v)| (
+                        k.clone().wrap_base(),
+                        v.into_iter().map(|tile| tile.clone().wrap_base()).collect_vec()
+                    ))
+                    .collect_vec()),*
+            }
+        }
+    }
 
-#[enum_dispatch(GenericPublicPlayerState)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BasePublicPlayerState {
-    RegularTile4(PublicPlayerState<RegularTile<4>>)
-}
-
-#[enum_dispatch]
-pub trait GenericPlayerStateE {}
-
-impl<T: Tile> GenericPlayerStateE for PlayerStateE<T> {}
-
-#[enum_dispatch(GenericPlayerStateE)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BasePlayerStateE {
-    RegularTile4(PlayerStateE<RegularTile<4>>)
+    $(
+        impl $t {
+            $crate::impl_wrap_functions!((pub) BasePlayerState, $x);
+        }
+    )*
 }
 
 /// The state of a player
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Getters)]
 pub struct PlayerState<T: Tile> {
     #[serde(bound = "")]
+    #[getset(get = "pub")]
     tiles: FnvHashMap<T::Kind, Vec<T>>
-}
-
-/// The state of a player visible to other players
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PublicPlayerState<T: Tile> { 
-    num_tiles: FnvHashMap<T::Kind, u32>
-}
-
-/// Player state with the tiles either visible or hidden
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum PlayerStateE<T: Tile> {
-    #[serde(bound = "")]
-    Private(PlayerState<T>),
-    #[serde(bound = "")]
-    Public(PublicPlayerState<T>),
 }
 
 impl<T: Tile> PlayerState<T> {
@@ -66,9 +66,11 @@ impl<T: Tile> PlayerState<T> {
         Self { tiles: game.board().all_kinds().into_iter().map(|kind| (kind, vec![])).collect() }
     }
 
-    /// The tiles the player is holding, grouped by kind
-    pub fn tiles(&self) -> &FnvHashMap<T::Kind, Vec<T>> {
-        &self.tiles
+    /// The tiles the player is holding, grouped by kind, with the kinds sorted
+    pub fn tiles_vec(&self) -> Vec<(&T::Kind, &[T])> {
+        self.tiles.iter().map(|(k, v)| (k, v.as_slice()))
+            .sorted_by_key(|(k, _)| *k)
+            .collect_vec()
     }
 
     /// Number of tiles of a specific kind that the player is holding
@@ -94,13 +96,15 @@ impl<T: Tile> PlayerState<T> {
     }
 
     /// Returns the state of `player` visible to `looker`
-    pub fn visible_state(&self, player: u32, looker: u32) -> PlayerStateE<T> {
+    pub fn visible_state(&self, player: u32, looker: u32) -> PlayerState<T> {
         if player == looker {
-            PlayerStateE::Private(self.clone())
+            self.clone()
         } else {
-            PlayerStateE::Public(PublicPlayerState{
-                num_tiles: self.tiles.iter().map(|(kind, tiles)| (kind.clone(), tiles.len() as u32)).collect()
-            })
+            let mut result = self.clone();
+            for tile in result.tiles.values_mut().into_iter().flatten() {
+                tile.set_visible(false);
+            }
+            result
         }
     }
 }

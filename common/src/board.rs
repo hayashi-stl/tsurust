@@ -12,13 +12,12 @@ use crate::{wrap_functions, impl_wrap_functions};
 use std::fmt::Debug;
 use std::hash::Hash;
 
-#[enum_dispatch]
-pub trait Port: Serialize + for<'a> Deserialize<'a> {
+pub trait Port: Clone + Debug + Eq + Hash + Serialize + for<'a> Deserialize<'a> {
     wrap_functions!(BasePort);
 }
 
 impl Port for (Pt2u, Vec2u) {
-    impl_wrap_functions!(BasePort, Pt2uVec2u);
+    impl_wrap_functions!(() BasePort, Pt2uVec2u);
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -26,12 +25,12 @@ pub enum BasePort {
     Pt2uVec2u((Pt2u, Vec2u))
 }
 
-pub trait TLoc: Serialize + for<'a> Deserialize<'a> {
+pub trait TLoc: Clone + Debug + Eq + Hash + Serialize + for<'a> Deserialize<'a> {
     wrap_functions!(BaseTLoc);
 }
 
 impl TLoc for Pt2u {
-    impl_wrap_functions!(BaseTLoc, Pt2u);
+    impl_wrap_functions!(() BaseTLoc, Pt2u);
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -39,40 +38,46 @@ pub enum BaseTLoc {
     Pt2u(Pt2u)
 }
 
-#[enum_dispatch]
-pub trait GenericBoard {}
-
-impl<B: Board> GenericBoard for B {}
-
-#[enum_dispatch(GenericBoard)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BaseBoard {
-    RectangleBoard(RectangleBoard)
-}
-
 #[macro_export]
 macro_rules! for_each_board {
-    (internal ($dollar:tt) $name:ident $ty:ident => $($body:tt)*) => {
+    (internal ($dollar:tt) $path:ident $name:ident $ty:ident => $($body:tt)*) => {
         macro_rules! __mac {
-            ($dollar($dollar $name:path: $dollar $ty:ty,)*) => {$($body)*}
+            ($dollar(($dollar ($dollar $path:tt)*) :: $dollar $name:ident: $dollar $ty:ty,)*) => {$($body)*}
         }
         __mac! {
-            $crate::board::BaseBoard::RectangleBoard: $crate::board::RectangleBoard,
+            ($crate::board::BaseBoard)::RectangleBoard: $crate::board::RectangleBoard,
         }
     };
 
-    ($name:ident, $ty:ident => $($body:tt)*) => {
+    ($path:ident::$name:ident, $ty:ident => $($body:tt)*) => {
         $crate::for_each_board! {
-            internal ($) $name $ty => $($body)*
+            internal ($) $path $name $ty => $($body)*
         }
     };
+}
+
+for_each_board! {
+    p::x, t =>
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum BaseBoard {
+        $($x($t)),*
+    }
+
+    impl BaseBoard {
+    }
+
+    $(
+        impl $t {
+            $crate::impl_wrap_functions!((pub) BaseBoard, $x);
+        }
+    )*
 }
 
 /// A board in the path game, parameterized by player location (port) type, tile location type, and tile kind type
 pub trait Board: Clone + Debug + Serialize + for<'a> Deserialize<'a> {
-    type TLoc: Clone + Debug + Eq + Hash + TLoc;
-    type Port: Clone + Debug + Eq + Hash + Port;
-    type Kind: Clone + Debug + Eq + Hash + Kind;
+    type TLoc: TLoc;
+    type Port: Port;
+    type Kind: Kind;
     type TileConfig: Clone + Debug;
 
     /// All the ports on the board, in no particular order

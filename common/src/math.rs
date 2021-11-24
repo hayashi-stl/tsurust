@@ -1,4 +1,4 @@
-use nalgebra::{Point2, Vector2, Vector3};
+use nalgebra::{Point2, Vector2, Vector3, Matrix2};
 use std::fmt::Debug;
 
 pub type Vec2u = Vector2<u32>;
@@ -9,6 +9,8 @@ pub type Vec3u = Vector3<u32>;
 pub type Vec3i = Vector3<i32>;
 pub type Vec3 = Vector3<f64>;
 pub type Vec3f = Vector3<f32>;
+pub type Mtx2 = Matrix2<f64>;
+pub type Mtx2f = Matrix2<f32>;
 pub type Pt2u = Point2<u32>;
 pub type Pt2i = Point2<i32>;
 pub type Pt2 = Point2<f64>;

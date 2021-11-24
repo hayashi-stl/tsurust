@@ -3,88 +3,119 @@ use enum_dispatch::enum_dispatch;
 use fnv::FnvHashMap;
 use getset::{CopyGetters, Getters};
 use itertools::Itertools;
+use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
+use log::*;
 
-use crate::{board::{Board, RectangleBoard}, board_state::BoardState, game::{Game, PathGame}, player_state::{PlayerState, PlayerStateE}, tile::{RegularTile, Tile}};
+use crate::{
+    board::{BasePort, BaseTLoc, Board, RectangleBoard, TLoc},
+    board_state::BoardState, game::{Game, PathGame},
+    pcg64,
+    player_state::PlayerState,
+    tile::{BaseKind, RegularTile, Tile, Kind}
+};
 use crate::board_state::BaseBoardState;
+use crate::board::Port;
+use crate::player_state::BasePlayerState;
+use crate::game::BaseGame;
 
-#[enum_dispatch]
-pub trait GenericGameState {
-    /// The state of the game visible to `looker`
-    fn visible_state(&self, looker: u32) -> BaseVisibleGameState;
+#[macro_export]
+macro_rules! for_each_game_state {
+    (internal ($dollar:tt) $path:ident $name:ident $ty:ident => $($body:tt)*) => {
+        macro_rules! __mac {
+            ($dollar(($dollar ($dollar $path:tt)*) :: $dollar $name:ident: $dollar $ty:ty,)*) => {$($body)*}
+        }
+        __mac! {
+            ($crate::game_state::BaseGameState)::Normal: $crate::game_state::GameState<
+                $crate::game::PathGame<$crate::board::RectangleBoard, $crate::tile::RegularTile<4>>
+            >,
+        }
+    };
+
+    ($path:ident::$name:ident, $ty:ident => $($body:tt)*) => {
+        $crate::for_each_game_state! {
+            internal ($) $path $name $ty => $($body)*
+        }
+    };
 }
 
-impl<G> GenericGameState for GameState<G>
-where
-    G: Game,
-    BaseVisibleGameState: From<VisibleGameState<G>>,
-{
-    fn visible_state(&self, looker: u32) -> BaseVisibleGameState {
-        self.visible_state(looker).into()
-    }
-}
-
-#[enum_dispatch(GenericGameState)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BaseGameState {
-    Normal(GameState<PathGame<RectangleBoard, RegularTile<4>>>)
-}
-
-#[enum_dispatch]
-pub trait GenericVisibleGameState {
-    /// Index of the player viewing this state
-    fn index(&self) -> u32;
-
-    /// Number of players in the game
-    fn num_players(&self) -> u32;
-
-    // State of the board. This is all public information.
-    fn board_state(&self) -> BaseBoardState;
-}
-
-impl<G: Game> GenericVisibleGameState for VisibleGameState<G>
-where
-    BaseBoardState: From<BoardState<G::Board, G::Tile>>
-{
-    fn index(&self) -> u32 {
-        self.index()
+for_each_game_state! {
+    p::x, t =>
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum BaseGameState {
+        $($x($t)),*
     }
 
-    fn num_players(&self) -> u32 {
-        self.player_states.len() as u32
+    impl BaseGameState {
+        pub fn visible_state(&self, looker: u32) -> BaseGameState {
+            match self { $($($p)*::$x(s) => s.visible_state(looker).wrap_base()),* }
+        }
+
+        /// Can `player` place a tile of kind `kind` from index `index` in their hand to location `loc`?
+        pub fn can_place_tile(&mut self, game: &BaseGame, player: u32, kind: &BaseKind, index: u32, loc: &BaseTLoc) -> bool {
+            match self { $($($p)*::$x(s) => s.can_place_tile(
+                <$t as GameStateT>::Game::unwrap_base_ref(game),
+                player,
+                <<$t as GameStateT>::Game as Game>::Kind::unwrap_base_ref(kind),
+                index,
+                <<$t as GameStateT>::Game as Game>::TLoc::unwrap_base_ref(loc),
+            )),* }
+        }
+
+        /// The player looking at this state, or None if no specific person
+        pub fn looker(&self) -> Option<u32> {
+            match self { $($($p)*::$x(s) => s.looker()),* }
+        }
+
+        /// Gets the looker expectantly. Should only be called by clients.
+        pub fn looker_expect(&self) -> u32 {
+            match self { $($($p)*::$x(s) => s.looker().expect("Should be lookin'")),* }
+        }
+
+        pub fn num_players(&self) -> u32 {
+            match self { $($($p)*::$x(s) => s.player_states.len() as u32),* }
+        }
+
+        pub fn board_state(&self) -> BaseBoardState {
+            match self { $($($p)*::$x(s) => s.board_state().clone().wrap_base()),* }
+        }
+
+        pub fn player_state(&self, player: u32) -> Option<BasePlayerState> {
+            match self { $($($p)*::$x(s) => s.player_state(player).map(|state| state.clone().wrap_base())),* }
+        }
+
+        pub fn place_player(&mut self, player: u32, port: &BasePort) {
+            match self { $($($p)*::$x(s) => s.place_player(player, Port::unwrap_base_ref(port))),* }
+        }
     }
 
-    fn board_state(&self) -> BaseBoardState {
-        self.board_state().clone().into()
-    }
+    $(
+        impl $t {
+            $crate::impl_wrap_functions!((pub) BaseGameState, $x);
+        }
+    )*
 }
 
-#[enum_dispatch(GenericVisibleGameState)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BaseVisibleGameState {
-    Normal(VisibleGameState<PathGame<RectangleBoard, RegularTile<4>>>)
+/// This trait is just to make the macro work
+pub trait GameStateT {
+    type Game: Game;
+}
+
+impl<G: Game> GameStateT for GameState<G> {
+    type Game = G;
 }
 
 /// The state of the game
-#[derive(Clone, Debug, Getters, Serialize, Deserialize)]
+#[derive(Clone, Debug, Getters, CopyGetters, Serialize, Deserialize)]
 pub struct GameState<G: Game> {
     #[getset(get = "pub")]
     board_state: BoardState<G::Board, G::Tile>,
     player_states: Vec<Option<PlayerState<G::Tile>>>,
+    /// Some if a player is looking at this state after calling visible_state()
+    #[getset(get_copy = "pub")]
+    looker: Option<u32>,
     turn_player: u32,
     tiles: FnvHashMap<G::Kind, VecDeque<G::Tile>>,
-}
-
-/// The state of the game visible to a specific player
-#[derive(Clone, Debug, Getters, CopyGetters, Serialize, Deserialize)]
-pub struct VisibleGameState<G: Game> {
-    #[getset(get = "pub")]
-    board_state: BoardState<G::Board, G::Tile>,
-    player_states: Vec<Option<PlayerStateE<G::Tile>>>,
-    #[getset(get_copy = "pub")]
-    index: u32,
-    turn_player: u32,
-    num_tiles: FnvHashMap<G::Kind, u32>,
 }
 
 impl<G: Game> GameState<G> {
@@ -94,12 +125,16 @@ impl<G: Game> GameState<G> {
         // TODO: Shuffle tiles first
         tiles.sort_by_key(|tile| tile.kind().clone());
         let groups = tiles.into_iter().group_by(|tile| tile.kind().clone());
-        let tiles = groups.into_iter().map(|(kind, tiles)|
+        let mut tiles = groups.into_iter().map(|(kind, tiles)|
             (kind, tiles.collect::<VecDeque<_>>())).collect::<FnvHashMap<_, _>>();
+        for tiles in tiles.values_mut() {
+            tiles.make_contiguous().shuffle(&mut pcg64!("Generating tiles for game"));
+        }
 
         let mut state = Self {
             board_state: BoardState::new(game, num_players),
             player_states: vec![Some(PlayerState::new(game)); num_players as usize],
+            looker: None,
             turn_player: 0,
             tiles,
         };
@@ -121,16 +156,16 @@ impl<G: Game> GameState<G> {
     }
 
     /// The state of the game visible to `looker`
-    pub fn visible_state(&self, looker: u32) -> VisibleGameState<G> {
-        VisibleGameState {
+    pub fn visible_state(&self, looker: u32) -> GameState<G> {
+        GameState {
             board_state: self.board_state().clone(),
             player_states: self.player_states.iter().enumerate().map(|(player, maybe_state)|
                 maybe_state.as_ref().map(|state| state.visible_state(player as u32, looker)))
                 .collect_vec(),
-            index: looker,
+            looker: Some(looker),
             turn_player: self.turn_player,
-            num_tiles: self.tiles.iter().map(|(kind, tiles)|
-                (kind.clone(), tiles.len() as u32))
+            tiles: self.tiles.iter().map(|(kind, tiles)|
+                (kind.clone(), tiles.iter().map(|t| t.clone().with_visible(false)).collect()))
                 .collect()
         }
     }

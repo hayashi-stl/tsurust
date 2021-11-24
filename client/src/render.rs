@@ -1,20 +1,22 @@
+use std::f64::consts::TAU;
 use std::rc::Rc;
 use std::sync::mpsc::Sender;
 use std::{cell::Cell, marker::PhantomData};
 use std::fmt::Debug;
 use std::hash::Hash;
-use common::nalgebra as na;
+use common::{for_each_tile, nalgebra as na};
 
-use common::math::{Pt2, Vec2f, Vec3f, Vec3u, pt2};
+use common::math::{Mtx2, Pt2, Vec2f, Vec3f, Vec3u, pt2};
 use common::nalgebra::ComplexField;
 use common::{board::{BaseBoard, BasePort, Board, RectangleBoard}, for_each_board, for_each_game, game::{BaseGame, Game, PathGame}, math::Vec2, tile::{RegularTile, Tile}};
 use common::board::Port;
-use common::tile::Kind;
-use itertools::{Itertools, chain, iproduct};
+use common::tile::{BaseKind, BaseTile, Kind};
+use itertools::{Itertools, chain, iproduct, izip};
 use specs::prelude::*;
 use wasm_bindgen::{JsCast, prelude::Closure};
 use web_sys::{DomParser, Element, MouseEvent, SupportedType, SvgElement, SvgGraphicsElement, SvgMatrix, SvgsvgElement};
 
+use crate::game::GameWorld;
 use crate::{SVG_NS, add_event_listener, console_log, document};
 
 //fn create_svg_element<S: JsCast>(name: &str) -> S {
@@ -78,7 +80,7 @@ impl TransformSystem {
 }
 
 impl<'a> System<'a> for TransformSystem {
-    type SystemData = (ReadStorage<'a, Transform>, ReadStorage<'a, SvgModel>);
+    type SystemData = (ReadStorage<'a, Transform>, ReadStorage<'a, Model>);
 
     fn run(&mut self, (transforms, models): Self::SystemData) {
         self.changed.clear();
@@ -90,7 +92,7 @@ impl<'a> System<'a> for TransformSystem {
         }
 
         for (transform, model, _) in (&transforms, &models, &self.changed).join() {
-            let svg = document().get_element_by_id(&model.svg_id).unwrap();
+            let svg = document().get_element_by_id(&model.id).unwrap();
             svg.set_attribute("transform", &format!("translate({}, {})", transform.position.x, transform.position.y))
                 .expect("Cannot change transform");
         }
@@ -107,36 +109,36 @@ impl Component for PortLabel {
 
 /// Rendering component
 #[derive(Debug)]
-pub struct SvgModel {
-    /// Id of the corresponding svg element
-    svg_id: String,
+pub struct Model {
+    /// Id of the corresponding element
+    id: String,
     order: i32,
     order_changed: bool,
 }
 
-impl Component for SvgModel {
+impl Component for Model {
     type Storage = DenseVecStorage<Self>;
 }
 
-impl SvgModel {
+impl Model {
     pub const ORDER_BOARD: i32 = 0;
     pub const ORDER_PLAYER_TOKEN: i32 = 1;
 
-    /// Adds an SVG to a parent node, taking a counter that is used for the id and increments.
+    /// Adds an element to a parent node, taking a counter that is used for the id and increments.
     /// Also takes a rendering order.
     /// Then returns a `Model`.
-    pub fn new(svg_elem: &SvgElement, order: i32, parent: &SvgElement, id: &mut u64) -> Self {
-        svg_elem.set_id(&id.to_string());
+    pub fn new(elem: &Element, order: i32, parent: &Element, id: &mut u64) -> Self {
+        elem.set_id(&id.to_string());
         *id += 1;
-        parent.append_child(&svg_elem).expect("Failed to add SVG");
-        SvgModel { svg_id: svg_elem.id(), order, order_changed: true }
+        parent.append_child(&elem).expect("Failed to add element");
+        Model { id: elem.id(), order, order_changed: true }
     }
 }
 
-impl Drop for SvgModel {
+impl Drop for Model {
     /// Delete the SVG component
     fn drop(&mut self) {
-        if let Some(element) = document().get_element_by_id(&self.svg_id) {
+        if let Some(element) = document().get_element_by_id(&self.id) {
             element.remove();
         }
     }
@@ -272,12 +274,12 @@ impl<'a> System<'a> for ColliderInputSystem {
 pub struct SvgOrderSystem;
 
 impl<'a> System<'a> for SvgOrderSystem {
-    type SystemData = WriteStorage<'a, SvgModel>;
+    type SystemData = WriteStorage<'a, Model>;
 
     fn run(&mut self, mut models: Self::SystemData) {
         // Reorder nodes, since z-index isn't consistently supported
         let groups = (&mut models).join()
-            .map(|m| (&m.svg_id, m.order, &mut m.order_changed))
+            .map(|m| (&m.id, m.order, &mut m.order_changed))
             .group_by(|(svg_id, _, _)| {
                 document().get_element_by_id(svg_id).unwrap()
                     .parent_element().expect("SVG node parents should have ids for sorting purposes").id()
@@ -375,15 +377,15 @@ pub trait BoardExt: Board {
 
 impl BoardExt for RectangleBoard {
     fn render(&self) -> SvgElement {
-        let svg_str = format!(r##"<g xmlns="{}" fill="#ffd090" stroke="#806048">"##, SVG_NS) +
+        let svg_str = format!(r##"<g xmlns="{}" class="rectangular-board">"##, SVG_NS) +
             &chain!(
                 iproduct!(0..self.height(), 0..self.width()).map(|(y, x)|
-                    format!(r##"<rect x="{}" y="{}" stroke-width="0.04" width="1" height="1"/>"##, x, y)),
+                    format!(r##"<rect x="{}" y="{}" width="1" height="1"/>"##, x, y)),
                 self.boundary_ports().into_iter().map(|(min, d)| {
                     let v = self.port_position(&(min, d));
                     let dx = if d.x == 0 { 0.1 } else { 0.0 };
                     let dy = if d.y == 0 { 0.1 } else { 0.0 };
-                    format!(r##"<line x1="{}" x2="{}" y1="{}" y2="{}" stroke-width="0.05"/>"##, v.x - dx, v.x + dx, v.y - dy, v.y + dy)
+                    format!(r##"<line x1="{}" x2="{}" y1="{}" y2="{}" class="rectangular-board-notch"/>"##, v.x - dx, v.x + dx, v.y - dy, v.y + dy)
                 })
             )
                 .join("") +
@@ -406,19 +408,127 @@ pub trait BaseBoardExt {
 }
 
 for_each_board! {
-    x, t => 
+    p::x, t => 
 
     impl BaseBoardExt for BaseBoard {
         fn render(&self) -> SvgElement {
             match self {
-                $($x(b) => b.render()),*
+                $($($p)*::$x(b) => b.render()),*
             }
         }
 
         fn port_position(&self, port: &BasePort) -> Pt2 {
             match self {
-                $($x(b) => b.port_position(<$t as Board>::Port::unwrap_base_ref(port))),*
+                $($($p)*::$x(b) => b.port_position(<$t as Board>::Port::unwrap_base_ref(port))),*
             }
+        }
+    }
+}
+
+/// Gets the point vectors of a `n`-sided regular polygon with unit side length,
+/// centered at the origin, and rotated so there are 2 points with maximum y coordinate.
+fn regular_polygon_points(n: u32) -> Vec<Vec2> {
+    let radius = 0.5 / (TAU / (2.0 * n as f64)).sin();
+    (0..n).map(|i| {
+        let angle = TAU * (0.25 + (-0.5 + i as f64) / n as f64);
+        let (sin, cos) = angle.sin_cos();
+        Vec2::from([cos * radius, sin * radius])
+    }).collect_vec()
+}
+
+/// Gets the SVG string that draws a `n`-sided regular polygon with unit side length,
+/// centered at the origin, and rotated so there are 2 points with maximum y coordinate.
+fn regular_polygon_svg_str(n: u32) -> String {
+    let poly_str = regular_polygon_points(n).into_iter()
+        .map(|vec| format!("{},{}", vec.x, vec.y))
+        .join(" ");
+    format!(r##"<polygon points="{}"/>"##, poly_str)
+}
+
+/// Extension trait for Tile, mainly for rendering since
+/// the server should know nothing about rendering
+pub trait TileExt: Tile {
+    fn render(&self) -> SvgElement;
+
+    fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity;
+}
+
+impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
+    fn render(&self) -> SvgElement {
+        if self.visible() {
+            let connections = (0..self.num_ports()).map(|i| self.output(i)).collect_vec();
+            let mut covered = vec![false; connections.len()];
+            let poly_pts = regular_polygon_points(EDGES);
+            let pts_normals = poly_pts.into_iter()
+                .circular_tuple_windows()
+                .flat_map(|(p0, p1)| {
+                    let normal = Vec2::from([-p1.y + p0.y, p1.x - p0.x]);
+                    let ports_per_edge = self.ports_per_edge();
+                    (0..ports_per_edge).map(move |i|
+                        (p0 + (p1 - p0) * (i + 1) as f64 / (ports_per_edge + 1) as f64, normal)
+                    )
+                })
+                .collect_vec();
+
+            let curviness = 0.25;
+            let path_str = izip!(0..self.num_ports(), connections)
+                .map(|(s, t)| {
+                    let p0 = pts_normals[s as usize].0;
+                    let p1 = pts_normals[s as usize].0 + pts_normals[s as usize].1 * curviness;
+                    let p2 = pts_normals[t as usize].0 + pts_normals[t as usize].1 * curviness;
+                    let p3 = pts_normals[t as usize].0;
+                    format!(concat!(
+                        r##"<path class="regular-tile-path-outer" d="M {0},{1} C {2},{3} {4},{5} {6},{7}"/>"##,
+                        r##"<path class="regular-tile-path-inner" d="M {0},{1} C {2},{3} {4},{5} {6},{7}"/>"##,
+                    ), p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y)
+                })
+                .join("");
+
+            let poly_str = regular_polygon_svg_str(EDGES);
+            let svg_str = format!(concat!(
+                r##"<g xmlns="{}" class="regular-tile-visible">"##,
+                "{}{}",
+                r##"</g>"##,
+            ), SVG_NS, poly_str, path_str);
+            parse_svg(&svg_str)
+        } else {
+            let poly_str = regular_polygon_svg_str(EDGES);
+            let svg_str = format!(concat!(
+                r##"<g xmlns="{}" class="regular-tile-hidden">"##,
+                r##"{}"##,
+                r##"</g>"##,
+            ), SVG_NS, poly_str);
+            parse_svg(&svg_str)
+        }
+    }
+
+    fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity {
+        let svg = self.render();
+        let wrapper = wrap_svg(&svg.dyn_into().unwrap(), 128);
+        world.create_entity()
+            .with(Model::new(&wrapper, 0, &GameWorld::bottom_panel(), id_counter))
+            .build()
+    }
+}
+
+/// Extension trait for BaseTile, mainly for rendering since
+/// the server should know nothing about rendering
+pub trait BaseTileExt {
+    fn render(&self) -> SvgElement;
+
+    fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity;
+}
+
+for_each_tile! {
+    p::x, t => 
+
+    impl BaseTileExt for BaseTile {
+        fn render(&self) -> SvgElement {
+            match self { $($($p)*::$x(b) => b.render()),* }
+        }
+
+        fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity {
+            match self { $($($p)*::$x(b) => b.create_hand_entity(world, id_counter)),* }
         }
     }
 }
@@ -452,12 +562,12 @@ pub trait BaseGameExt {
 }
 
 for_each_game! {
-    x, t => 
+    p::x, t => 
 
     impl BaseGameExt for BaseGame {
         fn start_ports_and_positions(&self) -> Vec<(BasePort, Pt2)> {
             match self {
-                $($x(g) => g.start_ports_and_positions().into_iter()
+                $($($p)*::$x(g) => g.start_ports_and_positions().into_iter()
                     .map(|(port, pos)| (port.wrap_base(), pos))
                     .collect()),*
             }
@@ -503,4 +613,17 @@ pub fn render_token(index: u32, num_players: u32, id_counter: &mut u64) -> SvgEl
         r##"</g>"##
     ), SVG_NS, color.x, color.y, color.z, darker.x, darker.y, darker.z, {*id_counter += 1; *id_counter - 1});
     parse_svg(&svg_str)
+}
+
+/// Wraps the SVG in an `<svg>` element of a specific size.
+/// The viewport is set so the svg fits snugly inside.
+pub fn wrap_svg(svg: &SvgGraphicsElement, size: u32) -> SvgElement {
+    let bbox = svg.get_b_box().expect("Cannot get bounding box");
+    let wrapper_str = format!(concat!(
+        r##"<svg xmlns="{0}" width="{1}" height="{1}" viewBox="{2} {3} {4} {5}">"##,
+        r##"</svg>"##
+    ), SVG_NS, size, -0.5, -0.5, 1, 1);//bbox.x(), bbox.y(), bbox.width(), bbox.height());
+    let wrapper = parse_svg(&wrapper_str);
+    wrapper.append_child(svg).expect("Cannot wrap svg");
+    wrapper
 }

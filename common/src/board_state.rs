@@ -9,27 +9,44 @@ use crate::board::{BasePort, Board, RectangleBoard, Port};
 use crate::game::Game;
 use crate::tile::{RegularTile, Tile};
 
-#[enum_dispatch]
-pub trait GenericBoardState {
-    fn player_port(&self, player: u32) -> Option<BasePort>;
+#[macro_export]
+macro_rules! for_each_board_state {
+    (internal ($dollar:tt) $path:ident $name:ident $ty:ident => $($body:tt)*) => {
+        macro_rules! __mac {
+            ($dollar(($dollar ($dollar $path:tt)*) :: $dollar $name:ident: $dollar $ty:ty,)*) => {$($body)*}
+        }
+        __mac! {
+            ($crate::board_state::BaseBoardState)::Normal: $crate::board_state::BoardState<
+                $crate::board::RectangleBoard, $crate::tile::RegularTile<4>
+            >,
+        }
+    };
+
+    ($path:ident::$name:ident, $ty:ident => $($body:tt)*) => {
+        $crate::for_each_board_state! {
+            internal ($) $path $name $ty => $($body)*
+        }
+    };
 }
 
-impl<K, C, B, T> GenericBoardState for BoardState<B, T>
-where
-    K: Clone + Debug + Eq + Hash,
-    C: Clone + Debug,
-    B: Clone + Debug + Board<Kind = K, TileConfig = C>,
-    T: Clone + Debug + Tile<Kind = K, TileConfig = C>,
-{
-    fn player_port(&self, player: u32) -> Option<BasePort> {
-        self.player_port(player).map(|port| port.clone().wrap_base())
+for_each_board_state! {
+    p::x, t =>
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum BaseBoardState {
+        $($x($t)),*
     }
-}
 
-#[enum_dispatch(GenericBoardState)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BaseBoardState {
-    Normal(BoardState<RectangleBoard, RegularTile<4>>)
+    impl BaseBoardState {
+        pub fn player_port(&self, player: u32) -> Option<BasePort> {
+            match self { $($($p)*::$x(s) => s.player_port(player).map(|port| port.clone().wrap_base())),* }
+        }
+    }
+
+    $(
+        impl $t {
+            $crate::impl_wrap_functions!((pub) BaseBoardState, $x);
+        }
+    )*
 }
 
 /// The state of the board

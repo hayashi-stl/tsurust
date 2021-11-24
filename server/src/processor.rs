@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use async_std::sync::{Mutex, MutexGuard};
-use common::{game_state::GenericGameState, message::{Request, Response}};
+use common::message::{Request, Response};
 use fnv::FnvHashMap;
 use itertools::Itertools;
 use log::*;
@@ -49,11 +49,16 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
         }
 
         Request::PlaceToken{ player, port } => {
-            state.peers().iter().map(|(addr, _)| {(*addr,
-                if let Some(_) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
-                    Response::PlacedToken { player, port: port.clone() }
-                ]} else { vec![] }
-            )}).collect()
+            if let Some(game_state) = state.game_mut().state_mut() {
+                state.peers().iter().map(|(addr, _)| {(*addr,
+                    if let Some(_) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                        Response::PlacedToken { player, port: port.clone() }
+                    ]} else { vec![] }
+                )}).collect()
+            } else {
+                warn!("Game state is missing");
+                FnvHashMap::default()
+            }
         }
 
         _ => FnvHashMap::default(),

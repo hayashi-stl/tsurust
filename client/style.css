@@ -18,10 +18,13 @@ html, body {
 
 .bottom-panel {
     flex: 0 0 200px;
-    overflow: hidden;
+    overflow: scroll;
     background-color: rgb(119, 141, 158);
     display: flex;
     flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
 }
 
 .top {
@@ -40,4 +43,38 @@ html, body {
     flex: auto;
     background-color: white;
     display: flex;
+}
+
+.rectangular-board {
+    fill: #ffd090;
+    stroke: #806048;
+    stroke-width: 0.04;
+}
+
+.rectangular-board-notch {
+    stroke-width: 0.06;
+}
+
+.regular-tile-visible {
+    fill: #5f4617;
+    stroke: #251c09;
+    stroke-width: 0.02;
+}
+
+.regular-tile-hidden {
+    fill: #473411;
+    stroke: #251c09;
+    stroke-width: 0.02;
+}
+
+.regular-tile-path-outer {
+    fill: none;
+    stroke: #a1a1a1;
+    stroke-width: 0.1;
+}
+
+.regular-tile-path-inner {
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 0.04;
 }

@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use serde::{Deserialize, Serialize};
 
 use crate::game::BaseGame;
-use crate::game_state::BaseVisibleGameState;
+use crate::game_state::BaseGameState;
 use crate::board::{BasePort, BaseTLoc};
 use crate::tile::BaseKind;
 
@@ -27,7 +27,9 @@ pub enum Response {
     /// Responds with the usernames of all players, in order of index
     Usernames{ names: Vec<String> },
     /// Responds with the game's state
-    State{ game: BaseGame, state: BaseVisibleGameState },
+    State{ game: BaseGame, state: BaseGameState },
     /// Player `player` has placed a token on port `port`.
     PlacedToken{ player: u32, port: BasePort },
+    /// Invalid move, please undo
+    Rejected,
 }

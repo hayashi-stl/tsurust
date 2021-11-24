@@ -41,7 +41,7 @@ impl State {
 
         Self {
             peers: FnvHashMap::default(),
-            game: GameInstance::new(game.into())
+            game: GameInstance::new(game.wrap_base())
         }
     }
 

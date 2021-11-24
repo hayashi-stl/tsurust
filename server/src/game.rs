@@ -61,4 +61,9 @@ impl GameInstance {
     pub fn start(&mut self) {
         self.state = Some(self.game.new_state(self.players.len() as u32));
     }
+
+    /// Gets the state mutably
+    pub fn state_mut(&mut self) -> Option<&mut BaseGameState> {
+        self.state.as_mut()
+    }
 }

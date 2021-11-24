@@ -1,8 +1,7 @@
-use common::message::Request;
+use common::{game_state::BaseGameState, message::Request};
 use specs::prelude::*;
 use enum_dispatch::enum_dispatch;
 use common::game::BaseGame;
-use common::game_state::BaseVisibleGameState;
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
@@ -13,11 +12,13 @@ pub struct EnterUsername;
 #[derive(Debug)]
 pub struct Game {
     pub(crate) game: BaseGame,
-    pub(crate) state: BaseVisibleGameState,
+    pub(crate) state: BaseGameState,
     pub(crate) board_entity: Entity,
     /// An token entity for each player.
     /// None if the player didn't place their token yet
     pub(crate) token_entities: Vec<Option<Entity>>,
+    /// Entites for tiles in the player's hand 
+    pub(crate) tile_hand_entities: Vec<Entity>,
     /// None if this is being edited
     pub(crate) gameplay_state: Option<gameplay::State>,
 }
@@ -54,7 +55,7 @@ pub type State = AppState;
 pub mod gameplay {
     use specs::{Entity, WorldExt};
     use enum_dispatch::enum_dispatch;
-    use common::{game_state::GenericVisibleGameState, message::Request};
+    use common::{message::Request};
 
     use crate::{game::{GameWorld, app}, render::TokenToPlace};
 
@@ -76,13 +77,13 @@ pub mod gameplay {
     impl GameplayStateT for PlaceToken {
         fn update(self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
             if let Ok(port) = world.port_receiver.try_recv() {
-                app.token_entities[app.state.index() as usize] = Some(self.token_entity);
+                app.token_entities[app.state.looker_expect() as usize] = Some(self.token_entity);
                 // The token has been placed; remove the PlaceToken component
                 world.world.write_component::<TokenToPlace>()
                     .remove(self.token_entity);
 
                 world.world.delete_entities(&self.start_ports).expect("Entity was deleted too early");
-                requests.push(Request::PlaceToken { player: app.state.index(), port });
+                requests.push(Request::PlaceToken { player: app.state.looker_expect(), port });
                 WaitPlaceTokens.into()
             } else {
                 PlaceToken{

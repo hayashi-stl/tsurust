@@ -1,13 +1,13 @@
 use std::sync::mpsc::{self, Receiver};
 
-use common::{board::BasePort, board_state::GenericBoardState, game::{BaseGame, GenericGame}, game_state::{BaseVisibleGameState, GenericVisibleGameState}, math::{Pt2, Vec2}, message::Request};
+use common::{board::BasePort, game::{BaseGame, GenericGame}, game_state::BaseGameState, math::{Pt2, Vec2}, message::Request};
 use itertools::Itertools;
 use specs::{Builder, Dispatcher, DispatcherBuilder, Entity, World, WorldExt};
 use wasm_bindgen::JsCast;
-use web_sys::SvgElement;
+use web_sys::{Element, SvgElement};
 use enum_dispatch::enum_dispatch;
 
-use crate::{console_log, document, render::{self, BaseBoardExt, BaseGameExt, BoardInput, Collider, ColliderInputSystem, PlaceTokenSystem, PortLabel, SvgModel, SvgOrderSystem, TokenSlot, TokenToPlace, Transform, TransformSystem}};
+use crate::{console_log, document, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt, BoardInput, Collider, ColliderInputSystem, Model, PlaceTokenSystem, PortLabel, SvgOrderSystem, TokenSlot, TokenToPlace, Transform, TransformSystem}};
 
 mod app;
 use app::{gameplay, AppStateT};
@@ -26,7 +26,7 @@ impl GameWorld {
     /// Constructs a game world
     pub fn new() -> Self {
         let mut world = World::new();
-        world.register::<SvgModel>();
+        world.register::<Model>();
         world.register::<Collider>();
         world.register::<TokenSlot>();
         world.register::<TokenToPlace>();
@@ -52,22 +52,29 @@ impl GameWorld {
         }
     }
 
-    fn svg_root() -> SvgElement {
+    pub fn svg_root() -> SvgElement {
         web_sys::window().unwrap()
             .document().unwrap()
             .get_element_by_id("svg_root").unwrap()
             .dyn_into().unwrap()
     }
 
+    pub fn bottom_panel() -> Element {
+        web_sys::window().unwrap()
+            .document().unwrap()
+            .get_element_by_id("bottom_panel").unwrap()
+            .dyn_into().unwrap()
+    }
+
     /// Constructs a game world from a game and state
-    pub fn set_game(&mut self, game: BaseGame, state: BaseVisibleGameState) {
+    pub fn set_game(&mut self, game: BaseGame, state: BaseGameState) {
         let board_svg = game.board().render();
         let start_ports = game.start_ports_and_positions().into_iter()
             .map(|(port, position)| {
                 let svg = render::render_port_collider();
                 self.world.create_entity()
                     .with(Transform::new(position))
-                    .with(SvgModel::new(
+                    .with(Model::new(
                         &svg,
                         Collider::ORDER_START_PORT,
                         &Self::svg_root(),
@@ -80,13 +87,13 @@ impl GameWorld {
             })
             .collect_vec();
         let board_entity = self.world.create_entity()
-            .with(SvgModel::new(&board_svg, SvgModel::ORDER_BOARD, &Self::svg_root(), &mut self.id_counter))
+            .with(Model::new(&board_svg, Model::ORDER_BOARD, &Self::svg_root(), &mut self.id_counter))
             .build();
         let token_entity = self.world.create_entity()
             .with(Transform::new(Pt2::origin()))
-            .with(SvgModel::new(
-                &render::render_token(state.index(), state.num_players(), &mut self.id_counter),
-                SvgModel::ORDER_PLAYER_TOKEN, 
+            .with(Model::new(
+                &render::render_token(state.looker_expect(), state.num_players(), &mut self.id_counter),
+                Model::ORDER_PLAYER_TOKEN, 
                 &Self::svg_root(), &mut self.id_counter
             ))
             .with(TokenToPlace)
@@ -97,11 +104,19 @@ impl GameWorld {
             .map(|player| state.board_state().player_port(player))
             .collect_vec();
 
+        let tile_hand_entities = state.player_state(state.looker_expect())
+            .map_or(vec![], |state| state.tiles_vec())
+            .into_iter()
+            .flat_map(|(kind, tiles)| tiles.into_iter().map(move |tile| (kind.clone(), tile)))
+            .map(|(_, tile)| tile.create_hand_entity(&mut self.world, &mut self.id_counter))
+            .collect_vec();
+
         self.state = Some(app::Game {
             game,
             state,
             board_entity,
             token_entities: vec![None; num_players as usize],
+            tile_hand_entities, 
             gameplay_state: Some(gameplay::PlaceToken{ start_ports, token_entity }.into()),
         }.into());
 
@@ -130,6 +145,7 @@ impl GameWorld {
         if let app::State::Game(game) = self.state.as_mut().unwrap() {
             let game: &mut app::Game = game;
             let position = game.game.board().port_position(port);
+            game.state.place_player(player, port);
 
             if let Some(token) = game.token_entities[player as usize] {
                 self.world.write_component::<Transform>()
@@ -139,9 +155,9 @@ impl GameWorld {
             } else {
                 game.token_entities[player as usize] = Some(self.world.create_entity()
                     .with(Transform::new(position))
-                    .with(SvgModel::new(
+                    .with(Model::new(
                         &render::render_token(player, game.state.num_players(), &mut self.id_counter),
-                        SvgModel::ORDER_PLAYER_TOKEN, 
+                        Model::ORDER_PLAYER_TOKEN, 
                         &Self::svg_root(), &mut self.id_counter
                     ))
                     .build());

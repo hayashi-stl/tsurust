@@ -72,7 +72,7 @@ async fn handle_connection(peer: SocketAddr, stream: TcpStream, state: Arc<Mutex
 }
 
 async fn run() {
-    env_logger::builder().filter_level(log::LevelFilter::Info).parse_default_env().init();
+    env_logger::builder().filter_level(log::LevelFilter::Debug).parse_default_env().init();
 
     let state = Arc::new(Mutex::new(State::new()));
 

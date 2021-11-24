@@ -31,37 +31,55 @@ where
     }
 }
 
-#[enum_dispatch(GenericGame)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BaseGame {
-    Normal(PathGame<RectangleBoard, RegularTile<4>>)
-}
-
 #[macro_export]
 macro_rules! for_each_game {
-    (internal ($dollar:tt) $name:ident $ty:ident => $($body:tt)*) => {
+    (internal ($dollar:tt) $path:ident $name:ident $ty:ident => $($body:tt)*) => {
         macro_rules! __mac {
-            ($dollar($dollar $name:path: $dollar $ty:ty,)*) => {$($body)*}
+            ($dollar(($dollar ($dollar $path:tt)*) :: $dollar $name:ident: $dollar $ty:ty,)*) => {$($body)*}
         }
         __mac! {
-            $crate::game::BaseGame::Normal: $crate::game::PathGame::<$crate::board::RectangleBoard, $crate::tile::RegularTile::<4>>,
+            ($crate::game::BaseGame)::Normal: $crate::game::PathGame<$crate::board::RectangleBoard, $crate::tile::RegularTile<4>>,
         }
     };
 
-    ($name:ident, $ty:ident => $($body:tt)*) => {
+    ($path:ident::$name:ident, $ty:ident => $($body:tt)*) => {
         $crate::for_each_game! {
-            internal ($) $name $ty => $($body)*
+            internal ($) $path $name $ty => $($body)*
         }
     };
+}
+
+for_each_game! {
+    p::x, t =>
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum BaseGame {
+        $($x($t)),*
+    }
+
+    impl BaseGame {
+        pub fn new_state(&self, num_players: u32) -> BaseGameState {
+            match self { $($($p)*::$x(s) => GameState::new(s, num_players).wrap_base()),* }
+        }
+
+        pub fn board(&self) -> BaseBoard {
+            match self { $($($p)*::$x(s) => s.board().clone().wrap_base()),* }
+        }
+    }
+
+    $(
+        impl $t {
+            $crate::impl_wrap_functions!((pub) BaseGame, $x);
+        }
+    )*
 }
 
 pub trait Game: Clone + Debug + Serialize {
-    type TLoc: Clone + Debug + Eq + Hash + TLoc;
-    type Port: Clone + Debug + Eq + Hash + Port;
-    type Kind: Clone + Debug + Eq + Ord + Hash + Kind;
+    type TLoc: TLoc;
+    type Port: Port;
+    type Kind: Kind;
     type TileConfig: Clone + Debug;
-    type Board: Clone + Debug +  Board<TLoc = Self::TLoc, Port = Self::Port, Kind = Self::Kind, TileConfig = Self::TileConfig>;
-    type Tile: Clone + Debug + Tile<Kind = Self::Kind, TileConfig = Self::TileConfig>;
+    type Board: Board<TLoc = Self::TLoc, Port = Self::Port, Kind = Self::Kind, TileConfig = Self::TileConfig>;
+    type Tile: Tile<Kind = Self::Kind, TileConfig = Self::TileConfig>;
 
     /// The game's board
     fn board(&self) -> &Self::Board;
@@ -92,10 +110,10 @@ pub struct PathGame<B: Board, T> {
 
 impl<K, C, B, T> PathGame<B, T>
 where
-    K: Clone + Debug + Eq + Ord + Hash + Kind,
+    K: Kind,
     C: Clone + Debug,
-    B: Clone + Debug + Board<Kind = K, TileConfig = C>,
-    T: Clone + Debug + Tile<Kind = K, TileConfig = C>
+    B: Board<Kind = K, TileConfig = C>,
+    T: Tile<Kind = K, TileConfig = C>
 {
     pub fn new<I: IntoIterator<Item = (B::Kind, u32)>>(
         board: B, start_ports: Vec<<B as Board>::Port>, tiles_per_player: I) -> Self {
@@ -110,10 +128,10 @@ where
 
 impl<K, C, B, T> Game for PathGame<B, T>
 where
-    K: Clone + Debug + Eq + Ord + Hash + Kind,
+    K: Kind,
     C: Clone + Debug,
-    B: Clone + Debug + Board<Kind = K, TileConfig = C>,
-    T: Clone + Debug + Tile<Kind = K, TileConfig = C>
+    B: Board<Kind = K, TileConfig = C>,
+    T: Tile<Kind = K, TileConfig = C>
 {
     type TLoc = B::TLoc;
     type Port = B::Port;

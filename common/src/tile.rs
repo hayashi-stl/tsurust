@@ -7,13 +7,12 @@ use serde::{Deserialize, Serialize};
 use crate::board::PortsPerEdgeTileConfig;
 use crate::{wrap_functions, impl_wrap_functions};
 
-#[enum_dispatch]
-pub trait Kind: Serialize + for<'a> Deserialize<'a> {
+pub trait Kind: Clone + Debug + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
     wrap_functions!(BaseKind);
 }
 
 impl Kind for () {
-    impl_wrap_functions!(BaseKind, Unit);
+    impl_wrap_functions!(() BaseKind, Unit);
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -21,44 +20,51 @@ pub enum BaseKind {
     Unit(())
 }
 
-pub trait GenericTile {}
-
-impl<T: Tile> GenericTile for T {}
-
-#[enum_dispatch(GenericTile)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BaseTile {
-    RegularTile4(RegularTile<4>)
-}
-
 #[macro_export]
 macro_rules! for_each_tile {
-    (internal ($dollar:tt) $name:ident $ty:ident => $($body:tt)*) => {
+    (internal ($dollar:tt) $path:ident $name:ident $ty:ident => $($body:tt)*) => {
         macro_rules! __mac {
-            ($dollar($dollar $name:path: $dollar $ty:ty,)*) => {$($body)*}
+            ($dollar(($dollar ($dollar $path:tt)*) :: $dollar $name:ident: $dollar $ty:ty,)*) => {$($body)*}
         }
         __mac! {
-            $crate::tile::BaseTile::RegularTile4: $crate::tile::RegularTile::<4>,
+            ($crate::tile::BaseTile)::RegularTile4: $crate::tile::RegularTile<4>,
         }
     };
 
-    ($name:ident, $ty:ident => $($body:tt)*) => {
+    ($path:ident::$name:ident, $ty:ident => $($body:tt)*) => {
         $crate::for_each_tile! {
-            internal ($) $name $ty => $($body)*
+            internal ($) $path $name $ty => $($body)*
         }
     };
+}
+
+for_each_tile! {
+    p::x, t =>
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum BaseTile {
+        $($x($t)),*
+    }
+
+    impl BaseTile {
+    }
+
+    $(
+        impl $t {
+            $crate::impl_wrap_functions!((pub) BaseTile, $x);
+        }
+    )*
 }
 
 /// A tile in the path game, parameterized by kind
-pub trait Tile: Clone + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
-    type Kind: Clone + Debug + Eq + Hash + Kind;
+pub trait Tile: Clone + Debug + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
+    type Kind: Kind;
     type TileConfig: Clone + Debug;
 
-    /// All tiles of this type, in no particular order.
+    /// All tiles of this type, in no particular order, but a deterministic order.
     /// Rotations count as separate tiles.
     fn all_including_rotations(config: Self::TileConfig) -> Vec<Self> where Self: Sized;
 
-    /// All tiles of this type, in no particular order.
+    /// All tiles of this type, in no particular order, but a deterministic order.
     /// Rotations do not count as separate tiles.
     fn all(config: Self::TileConfig) -> Vec<Self> where Self: Sized {
         let mut with_rotations = Self::all_including_rotations(config).into_iter().collect::<HashSet<_>>();
@@ -72,7 +78,9 @@ pub trait Tile: Clone + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
             }).collect_vec());
         }
 
-        groups.into_iter().map(|group| group.into_iter().min_by_key(|tile| tile.clone()).unwrap()).collect_vec()
+        groups.into_iter().map(|group| group.into_iter().min_by_key(|tile| tile.clone()).unwrap())
+            .sorted()
+            .collect_vec()
     }
 
     /// All rotations of this tile.
@@ -94,20 +102,30 @@ pub trait Tile: Clone + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
 
     /// The output port of some input port on the tile
     fn output(&self, input: u32) -> u32;
+
+    /// Whether the tile is visible to whoever's has the reference
+    fn visible(&self) -> bool;
+
+    /// Set the visibility of this tile using the builder pattern
+    fn with_visible(self, visible: bool) -> Self;
+
+    /// Set the visibility of this tile
+    fn set_visible(&mut self, visible: bool);
 }
 
 /// A regular-polygon-shaped tile with `EDGES` edges
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct RegularTile<const EDGES: u32> {
-    connections: Vec<u32>
+    connections: Vec<u32>,
+    visible: bool,
 }
 
 impl<const EDGES: u32> RegularTile<EDGES> {
     pub fn new(connections: Vec<u32>) -> Self {
-        Self { connections }
+        Self { connections, visible: true }
     }
 
-    fn ports_per_edge(&self) -> u32 {
+    pub fn ports_per_edge(&self) -> u32 {
         self.connections.len() as u32 / EDGES
     }
 }
@@ -179,6 +197,19 @@ impl<const EDGES: u32> Tile for RegularTile<EDGES> {
 
     fn output(&self, input: u32) -> u32 {
         self.connections[input as usize]
+    }
+
+    fn visible(&self) -> bool {
+        self.visible
+    }
+
+    fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        self.visible = visible;
     }
 }
 
