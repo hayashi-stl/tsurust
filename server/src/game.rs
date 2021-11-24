@@ -66,4 +66,9 @@ impl GameInstance {
     pub fn state_mut(&mut self) -> Option<&mut BaseGameState> {
         self.state.as_mut()
     }
+
+    /// Gets the game immutably and the state mutably
+    pub fn game_and_state_mut(&mut self) -> (&BaseGame, Option<&mut BaseGameState>) {
+        (&self.game, self.state.as_mut())
+    }
 }

@@ -51,6 +51,14 @@ for_each_game_state! {
             match self { $($($p)*::$x(s) => s.visible_state(looker).wrap_base()),* }
         }
 
+        /// Can someone place their token on the board on port `port`?
+        pub fn can_place_player(&mut self, game: &BaseGame, port: &BasePort) -> bool {
+            match self { $($($p)*::$x(s) => s.can_place_player(
+                <$t as GameStateT>::Game::unwrap_base_ref(game),
+                <<$t as GameStateT>::Game as Game>::Port::unwrap_base_ref(port),
+            )),* }
+        }
+
         /// Can `player` place a tile of kind `kind` from index `index` in their hand to location `loc`?
         pub fn can_place_tile(&mut self, game: &BaseGame, player: u32, kind: &BaseKind, index: u32, loc: &BaseTLoc) -> bool {
             match self { $($($p)*::$x(s) => s.can_place_tile(
@@ -82,6 +90,16 @@ for_each_game_state! {
 
         pub fn player_state(&self, player: u32) -> Option<BasePlayerState> {
             match self { $($($p)*::$x(s) => s.player_state(player).map(|state| state.clone().wrap_base())),* }
+        }
+
+        /// Whose turn it is
+        pub fn turn_player(&self) -> u32 {
+            match self { $($($p)*::$x(s) => s.turn_player()),* }
+        }
+
+        /// Whether all players placed their tokens
+        pub fn all_players_placed(&self) -> bool {
+            match self { $($($p)*::$x(s) => s.all_players_placed()),* }
         }
 
         pub fn place_player(&mut self, player: u32, port: &BasePort) {
@@ -207,6 +225,11 @@ impl<G: Game> GameState<G> {
     pub fn player_place_tile(&mut self, player: u32, kind: &G::Kind, index: u32, loc: &G::TLoc) {
         let tile = self.player_states[player as usize].as_mut().unwrap().remove_tile(kind, index);
         self.place_tile(tile, loc)
+    }
+
+    /// Whether all players placed their tokens
+    pub fn all_players_placed(&self) -> bool {
+        self.board_state().all_players_placed()
     }
 
     /// Move players that touch a tile along their respective paths until they face a dead end.

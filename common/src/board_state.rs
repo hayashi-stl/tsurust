@@ -75,6 +75,11 @@ where
     pub fn tile_at(&self, loc: &B::TLoc) -> Option<&T> {
         self.tiles.get(loc)
     }
+
+    /// Whether all players placed their tokens
+    pub fn all_players_placed(&self) -> bool {
+        self.players.iter().all(|port| port.is_some())
+    }
     
     /// Port that a player is on. None if the player hasn't placed their token yet
     pub fn player_port(&self, player: u32) -> Option<&B::Port> {

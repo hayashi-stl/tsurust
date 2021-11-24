@@ -1,13 +1,13 @@
 use std::sync::mpsc::{self, Receiver};
 
-use common::{board::BasePort, game::{BaseGame, GenericGame}, game_state::BaseGameState, math::{Pt2, Vec2}, message::Request};
+use common::{board::BasePort, game::{BaseGame, GenericGame}, game_state::BaseGameState, math::{Pt2, Vec2}, message::{Request, Response}};
 use itertools::Itertools;
 use specs::{Builder, Dispatcher, DispatcherBuilder, Entity, World, WorldExt};
 use wasm_bindgen::JsCast;
 use web_sys::{Element, SvgElement};
 use enum_dispatch::enum_dispatch;
 
-use crate::{console_log, document, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt, BoardInput, Collider, ColliderInputSystem, Model, PlaceTokenSystem, PortLabel, SvgOrderSystem, TokenSlot, TokenToPlace, Transform, TransformSystem}};
+use crate::{console_log, document, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt, BoardInput, Collider, ColliderInputSystem, Model, PlaceTokenSystem, PortLabel, RunPlaceTokenSystem, SvgOrderSystem, TokenSlot, TokenToPlace, Transform, TransformSystem}};
 
 mod app;
 use app::{gameplay, AppStateT};
@@ -34,6 +34,7 @@ impl GameWorld {
         world.register::<PortLabel>();
         world.insert(BoardInput::new(&document().get_element_by_id("svg_root").expect("Missing main panel svg")
             .dyn_into().expect("Not an <svg> element")));
+        world.insert(RunPlaceTokenSystem(true));
 
         let (port_sender, port_receiver) = mpsc::channel();
         let dispatcher = DispatcherBuilder::new()
@@ -66,8 +67,9 @@ impl GameWorld {
             .dyn_into().unwrap()
     }
 
-    /// Constructs a game world from a game and state
-    pub fn set_game(&mut self, game: BaseGame, state: BaseGameState) {
+    /// Constructs a game world from a game and state.
+    /// This is meant to be called with `self.state == None` and returns the new world state.
+    pub fn set_game(&mut self, game: BaseGame, state: BaseGameState) -> app::Game {
         let board_svg = game.board().render();
         let start_ports = game.start_ports_and_positions().into_iter()
             .map(|(port, position)| {
@@ -111,21 +113,23 @@ impl GameWorld {
             .map(|(_, tile)| tile.create_hand_entity(&mut self.world, &mut self.id_counter))
             .collect_vec();
 
-        self.state = Some(app::Game {
+        let mut game_state = app::Game {
             game,
             state,
             board_entity,
             token_entities: vec![None; num_players as usize],
             tile_hand_entities, 
             gameplay_state: Some(gameplay::PlaceToken{ start_ports, token_entity }.into()),
-        }.into());
+        };
 
         // For spectators: add ports that have already been placed
         for (player, port) in ports.into_iter().enumerate() {
             if let Some(port) = port {
-                self.set_token_position(player as u32, &port);
+                game_state.set_token_position(self, player as u32, &port);
             }
         }
+
+        game_state
     }
 
     pub fn update(&mut self) -> Vec<Request> {
@@ -140,28 +144,18 @@ impl GameWorld {
         requests
     }
 
-    /// Set the position of some player's token.
-    pub fn set_token_position(&mut self, player: u32, port: &BasePort) {
-        if let app::State::Game(game) = self.state.as_mut().unwrap() {
-            let game: &mut app::Game = game;
-            let position = game.game.board().port_position(port);
-            game.state.place_player(player, port);
+    pub fn handle_response(&mut self, response: Response) -> Vec<Request> {
+        let mut requests = vec![];
 
-            if let Some(token) = game.token_entities[player as usize] {
-                self.world.write_component::<Transform>()
-                    .get_mut(token)
-                    .expect("Expected token to exist since its ID is stored")
-                    .position = position;
-            } else {
-                game.token_entities[player as usize] = Some(self.world.create_entity()
-                    .with(Transform::new(position))
-                    .with(Model::new(
-                        &render::render_token(player, game.state.num_players(), &mut self.id_counter),
-                        Model::ORDER_PLAYER_TOKEN, 
-                        &Self::svg_root(), &mut self.id_counter
-                    ))
-                    .build());
-            }
+        if let Response::Usernames{ names } = response {
+            let names_str = names.into_iter().join("\n\n");
+            document().get_element_by_id("usernames").unwrap().set_inner_html(&names_str);
+        } else {
+            self.state = Some(self.state.take()
+                .expect("State is missing")
+                .handle_response(self, response, &mut requests));
         }
+
+        requests
     }
 }

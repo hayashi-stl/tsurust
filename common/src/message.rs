@@ -32,4 +32,8 @@ pub enum Response {
     PlacedToken{ player: u32, port: BasePort },
     /// Invalid move, please undo
     Rejected,
+    /// Everyone placed their tokens; it's time to place some tiles
+    AllPlacedTokens,
+    /// It's your turn, make a move
+    YourTurn,
 }

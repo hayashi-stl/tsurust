@@ -8,25 +8,7 @@ use crate::{console_log, game::GameWorld};
 pub fn process_response(resp: Response, game_world: &mut GameWorld) -> Vec<Request> {
     let doc = web_sys::window().unwrap().document().unwrap();
 
-    match resp {
-        Response::Usernames{ names } => {
-            let names_str = names.into_iter().join("\n\n");
-            doc.get_element_by_id("usernames").unwrap().set_inner_html(&names_str);
-            vec![]
-        }
-
-        Response::State { game, state } => {
-            game_world.set_game(game, state);
-            vec![]
-        }
-
-        Response::PlacedToken { player, port } => {
-            game_world.set_token_position(player, &port);
-            vec![]
-        }
-
-        _ => vec![]
-    }
+    game_world.handle_response(resp)
 }
 
 /// Sends a request to the server.

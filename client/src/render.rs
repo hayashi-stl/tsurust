@@ -280,6 +280,10 @@ impl<'a> System<'a> for SvgOrderSystem {
         // Reorder nodes, since z-index isn't consistently supported
         let groups = (&mut models).join()
             .map(|m| (&m.id, m.order, &mut m.order_changed))
+            .sorted_by_key(|(svg_id, _, _)| {
+                document().get_element_by_id(svg_id).unwrap()
+                    .parent_element().expect("SVG node parents should have ids for sorting purposes").id()
+            })
             .group_by(|(svg_id, _, _)| {
                 document().get_element_by_id(svg_id).unwrap()
                     .parent_element().expect("SVG node parents should have ids for sorting purposes").id()
@@ -294,7 +298,7 @@ impl<'a> System<'a> for SvgOrderSystem {
 
             values.sort_by_key(|(_, order, _)| *order);
             let parent = document().get_element_by_id(&parent_id).expect("SVG node unexpectedly removed");
-            for (svg_id, _, order_changed) in values {
+            for (svg_id, order, order_changed) in values {
                 let elem = document().get_element_by_id(svg_id).expect("SVG node unexpectedly removed");
                 let node = parent.remove_child(&elem).expect("Failed to reorder");
                 parent.append_child(&node).expect("Failed to reorder");
@@ -320,6 +324,9 @@ impl Component for TokenToPlace {
     type Storage = NullStorage<Self>;
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RunPlaceTokenSystem(pub bool);
+
 pub struct PlaceTokenSystem {
     port_sender: Sender<BasePort>,
 }
@@ -332,6 +339,7 @@ impl PlaceTokenSystem {
 
 #[derive(SystemData)]
 pub struct PlaceTokenSystemData<'a> {
+    run: Read<'a, RunPlaceTokenSystem>,
     tokens: ReadStorage<'a, TokenToPlace>,
     token_slots: ReadStorage<'a, TokenSlot>,
     colliders: ReadStorage<'a, Collider>,
@@ -344,6 +352,8 @@ impl<'a> System<'a> for PlaceTokenSystem {
     type SystemData = PlaceTokenSystemData<'a>;
     
     fn run(&mut self, mut data: Self::SystemData) {
+        if !data.run.0 { return }
+
         let position = (&data.token_slots, &data.colliders, &data.transforms).join()
             .flat_map(|(_, collider, transform)| {
                 collider.hovered().then(|| transform.position)

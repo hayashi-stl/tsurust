@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::iter;
 
 use async_std::sync::{Mutex, MutexGuard};
 use common::message::{Request, Response};
@@ -37,24 +38,38 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
         },
 
         Request::StartGame => {
-            state.game_mut().start();
-            state.peers().iter().map(|(addr, _)| {(*addr,
-                if let Some(index) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
-                    Response::State {
-                        game: state.game().game().clone(),
-                        state: state.game().state().as_ref().expect("Game should have started").visible_state(index as u32)
-                    }
-                ]} else { vec![] }
-            )}).collect()
+            if !state.game().started() {
+                state.game_mut().start();
+                state.peers().iter().map(|(addr, _)| {(*addr,
+                    if let Some(index) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                        Response::State {
+                            game: state.game().game().clone(),
+                            state: state.game().state().as_ref().expect("Game should have started").visible_state(index as u32)
+                        }
+                    ]} else { vec![] }
+                )}).collect()
+            } else {
+                FnvHashMap::default()
+            }
         }
 
         Request::PlaceToken{ player, port } => {
-            if let Some(game_state) = state.game_mut().state_mut() {
-                state.peers().iter().map(|(addr, _)| {(*addr,
-                    if let Some(_) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
-                        Response::PlacedToken { player, port: port.clone() }
-                    ]} else { vec![] }
-                )}).collect()
+            if let (game, Some(game_state)) = state.game_mut().game_and_state_mut() {
+                if game_state.can_place_player(game, &port) {
+                    game_state.place_player(player, &port);
+                    let all_placed = game_state.all_players_placed();
+                    let turn_player = game_state.turn_player();
+
+                    state.peers().iter().map(|(addr, _)| {(*addr,
+                        if let Some(index) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                            Some(Response::PlacedToken { player, port: port.clone() }),
+                            all_placed.then(|| Response::AllPlacedTokens),
+                            (all_placed && turn_player == index as u32).then(|| Response::YourTurn),
+                        ].into_iter().flatten().collect()} else { vec![] }
+                    )}).collect()
+                } else {
+                    iter::once((requester, vec![Response::Rejected])).collect()
+                }
             } else {
                 warn!("Game state is missing");
                 FnvHashMap::default()
