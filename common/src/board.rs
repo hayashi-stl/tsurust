@@ -20,7 +20,7 @@ impl Port for (Pt2u, Vec2u) {
     impl_wrap_functions!(() BasePort, Pt2uVec2u);
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BasePort {
     Pt2uVec2u((Pt2u, Vec2u))
 }
@@ -33,7 +33,7 @@ impl TLoc for Pt2u {
     impl_wrap_functions!(() BaseTLoc, Pt2u);
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BaseTLoc {
     Pt2u(Pt2u)
 }
@@ -64,6 +64,12 @@ for_each_board! {
     }
 
     impl BaseBoard {
+        /// The player ports around a tile location, in order
+        pub fn port_locs(&self, port: &BasePort) -> Vec<BaseTLoc> {
+            match self { $($($p)*::$x(s) => s.port_locs(
+                <$t as Board>::Port::unwrap_base_ref(port)
+            ).into_iter().map(|loc| loc.wrap_base()).collect()),* }
+        }
     }
 
     $(

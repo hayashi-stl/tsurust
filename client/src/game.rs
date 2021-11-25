@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{Element, SvgElement};
 use enum_dispatch::enum_dispatch;
 
-use crate::{console_log, document, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt, BoardInput, Collider, ColliderInputSystem, Model, PlaceTokenSystem, PortLabel, RunPlaceTokenSystem, SvgOrderSystem, TokenSlot, TokenToPlace, Transform, TransformSystem}};
+use crate::{console_log, document, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt, BoardInput, Collider, ColliderInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem}};
 
 mod app;
 use app::{gameplay, AppStateT};
@@ -19,7 +19,6 @@ pub struct GameWorld {
     world: World,
     id_counter: u64,
     dispatcher: Dispatcher<'static, 'static>,
-    port_receiver: Receiver<BasePort>,
 }
 
 impl GameWorld {
@@ -30,18 +29,29 @@ impl GameWorld {
         world.register::<Collider>();
         world.register::<TokenSlot>();
         world.register::<TokenToPlace>();
+        world.register::<TileSlot>();
+        world.register::<TileToPlace>();
         world.register::<Transform>();
         world.register::<PortLabel>();
+        world.register::<TileLabel>();
+        world.register::<TLocLabel>();
+        world.register::<TileSelect>();
         world.insert(BoardInput::new(&document().get_element_by_id("svg_root").expect("Missing main panel svg")
             .dyn_into().expect("Not an <svg> element")));
         world.insert(RunPlaceTokenSystem(true));
+        world.insert(RunSelectTileSystem(true));
+        world.insert(RunPlaceTileSystem(true));
+        world.insert(PlacedPort(None));
+        world.insert(SelectedTile(None));
+        world.insert(PlacedTLoc(None));
 
-        let (port_sender, port_receiver) = mpsc::channel();
         let dispatcher = DispatcherBuilder::new()
             .with(SvgOrderSystem, "svg_order", &[])
             .with(ColliderInputSystem, "collider_input", &[])
-            .with(PlaceTokenSystem::new(port_sender), "place_token", &["collider_input"])
-            .with(TransformSystem::new(&world), "transform", &["place_token"])
+            .with(PlaceTokenSystem, "place_token", &["collider_input"])
+            .with(PlaceTileSystem, "place_tile", &["collider_input"])
+            .with(TransformSystem::new(&world), "transform", &["place_token", "place_tile"])
+            .with(SelectTileSystem, "select_tile", &["collider_input"])
             .build();
 
         Self {
@@ -49,7 +59,6 @@ impl GameWorld {
             world,
             id_counter: 0,
             dispatcher,
-            port_receiver,
         }
     }
 

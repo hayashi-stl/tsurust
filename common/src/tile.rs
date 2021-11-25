@@ -15,7 +15,7 @@ impl Kind for () {
     impl_wrap_functions!(() BaseKind, Unit);
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum BaseKind {
     Unit(())
 }
@@ -40,7 +40,7 @@ macro_rules! for_each_tile {
 
 for_each_tile! {
     p::x, t =>
-    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
     pub enum BaseTile {
         $($x($t)),*
     }

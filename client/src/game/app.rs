@@ -105,7 +105,7 @@ pub mod gameplay {
     use enum_dispatch::enum_dispatch;
     use common::{message::{Request, Response}};
 
-    use crate::{console_log, game::{GameWorld, app}, render::{RunPlaceTokenSystem, TokenToPlace}};
+    use crate::{console_log, game::{GameWorld, app}, render::{BaseBoardExt, BaseTileExt, PlacedPort, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace}};
 
     #[derive(Debug)]
     pub struct PlaceToken {
@@ -128,7 +128,10 @@ pub mod gameplay {
     pub struct WaitTurn;
 
     #[derive(Debug)]
-    pub struct PlaceTile;
+    pub struct PlaceTile {
+        pub(crate) locs: Vec<Entity>,
+        pub(crate) tile_entity: Option<Entity>,
+    }
 
     #[enum_dispatch]
     pub trait GameplayStateT {
@@ -141,7 +144,7 @@ pub mod gameplay {
         fn update(self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
             world.world.get_mut::<RunPlaceTokenSystem>().expect("Missing RunPlaceTokenSystem").0 = true;
 
-            if let Ok(port) = world.port_receiver.try_recv() {
+            if let Some(port) = world.world.get_mut::<PlacedPort>().expect("Missing PlacedPort").0.take() {
                 requests.push(Request::PlaceToken { player: app.state.looker_expect(), port });
                 // Suspend this while waiting for the check
                 world.world.get_mut::<RunPlaceTokenSystem>().expect("Missing RunPlaceTokenSystem").0 = false;
@@ -187,7 +190,6 @@ pub mod gameplay {
 
         fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
             if let Response::AllPlacedTokens = response {
-                console_log!("Wait your turn.");
                 WaitTurn.into()
             } else {
                 self.into()
@@ -202,8 +204,15 @@ pub mod gameplay {
 
         fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
             if let Response::YourTurn = response {
-                console_log!("Your turn!");
-                PlaceTile.into()
+                let port = app.state.board_state().player_port(app.state.looker_expect()).expect("Port should be placed");
+                let locs = app.game.board().port_locs(&port).into_iter().map(|loc| {
+                    app.game.board().create_loc_collider_entity(&loc, &mut world.world, &mut world.id_counter)
+                }).collect();
+
+                PlaceTile {
+                    locs,
+                    tile_entity: None
+                }.into()
             } else {
                 self.into()
             }
@@ -211,7 +220,23 @@ pub mod gameplay {
     }
 
     impl GameplayStateT for PlaceTile {
-        fn update(self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
+        fn update(mut self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
+            let selected_tile = world.world.fetch::<SelectedTile>();
+            let storage = world.world.read_component::<TileLabel>();
+            let tile_label = self.tile_entity.map(|entity| 
+                &storage.get(entity).expect("Tile entity should have TileLabel").0
+            );
+
+            if selected_tile.0.as_ref() != tile_label {
+                // Replace tile to place
+                let tile = selected_tile.0.clone();
+                std::mem::drop((selected_tile, storage));
+                self.tile_entity.map(|entity| world.world.delete_entity(entity).ok());
+                if let Some(tile) = tile {
+                    self.tile_entity = Some(tile.create_to_place_entity(&mut world.world, &mut world.id_counter));
+                }
+            }
+
             self.into()
         }
 

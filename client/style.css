@@ -45,6 +45,16 @@ html, body {
     display: flex;
 }
 
+.tile-selected {
+    padding: 10px;
+    background-color: white;
+}
+
+.tile-unselected {
+    padding: 10px;
+    background-color: transparent;
+}
+
 .rectangular-board {
     fill: #ffd090;
     stroke: #806048;

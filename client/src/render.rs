@@ -4,12 +4,12 @@ use std::sync::mpsc::Sender;
 use std::{cell::Cell, marker::PhantomData};
 use std::fmt::Debug;
 use std::hash::Hash;
-use common::{for_each_tile, nalgebra as na};
+use common::{for_each_tile, nalgebra, nalgebra as na};
 
 use common::math::{Mtx2, Pt2, Vec2f, Vec3f, Vec3u, pt2};
-use common::nalgebra::ComplexField;
+use common::nalgebra::{ComplexField, vector};
 use common::{board::{BaseBoard, BasePort, Board, RectangleBoard}, for_each_board, for_each_game, game::{BaseGame, Game, PathGame}, math::Vec2, tile::{RegularTile, Tile}};
-use common::board::Port;
+use common::board::{BaseTLoc, Port, TLoc};
 use common::tile::{BaseKind, BaseTile, Kind};
 use itertools::{Itertools, chain, iproduct, izip};
 use specs::prelude::*;
@@ -107,6 +107,32 @@ impl Component for PortLabel {
     type Storage = DenseVecStorage<Self>;
 }
 
+/// Labels an entity with a tile location
+#[derive(Clone, Debug)]
+pub struct TLocLabel(pub BaseTLoc);
+
+impl Component for TLocLabel {
+    type Storage = DenseVecStorage<Self>;
+}
+
+/// Labels an entity with a tile
+#[derive(Clone, Debug)]
+pub struct TileLabel(pub BaseTile);
+
+impl Component for TileLabel {
+    type Storage = DenseVecStorage<Self>;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TileSelect {
+    /// Whether this entity is a selected tile
+    selected: bool,
+}
+
+impl Component for TileSelect {
+    type Storage = DenseVecStorage<Self>;
+}
+
 /// Rendering component
 #[derive(Debug)]
 pub struct Model {
@@ -122,7 +148,8 @@ impl Component for Model {
 
 impl Model {
     pub const ORDER_BOARD: i32 = 0;
-    pub const ORDER_PLAYER_TOKEN: i32 = 1;
+    pub const ORDER_TILE: i32 = 1;
+    pub const ORDER_PLAYER_TOKEN: i32 = 2;
 
     /// Adds an element to a parent node, taking a counter that is used for the id and increments.
     /// Also takes a rendering order.
@@ -199,11 +226,12 @@ impl Component for Collider {
 }
 
 impl Collider {
-    pub const ORDER_START_PORT: i32 = -(i32::MIN / 2) + 0;
+    pub const ORDER_START_PORT: i32 = -(i32::MIN / 2) + 1;
+    pub const ORDER_TILE_LOC: i32 = -(i32::MIN / 2) + 0;
 
     /// Constructs a collider.
-    /// Takes an svg element to insert callbacks into
-    pub fn new(svg_elem: &SvgElement) -> Self {
+    /// Takes an element to insert callbacks into
+    pub fn new(elem: &Element) -> Self {
         let hovered_raw = Rc::new(Cell::new(false));
         let hovered_clone = Rc::clone(&hovered_raw);
         let mouseover_listener = Closure::wrap(Box::new(move |e: MouseEvent| {
@@ -214,9 +242,9 @@ impl Collider {
             hovered_clone.set(false);
         }) as Box<dyn FnMut(MouseEvent)>);
 
-        svg_elem.add_event_listener_with_callback("mouseover", mouseover_listener.as_ref().unchecked_ref())
+        elem.add_event_listener_with_callback("mouseover", mouseover_listener.as_ref().unchecked_ref())
             .expect("Failed to add collider callback");
-        svg_elem.add_event_listener_with_callback("mouseout", mouseout_listener.as_ref().unchecked_ref())
+        elem.add_event_listener_with_callback("mouseout", mouseout_listener.as_ref().unchecked_ref())
             .expect("Failed to add collider callback");
 
         let clicked_raw = Rc::new(Cell::new(false));
@@ -225,7 +253,7 @@ impl Collider {
             clicked_clone.set(true);
         }) as Box<dyn FnMut(MouseEvent)>);
 
-        svg_elem.add_event_listener_with_callback("click", click_listener.as_ref().unchecked_ref())
+        elem.add_event_listener_with_callback("click", click_listener.as_ref().unchecked_ref())
             .expect("Failed to add collider callback");
 
         Collider {
@@ -324,22 +352,19 @@ impl Component for TokenToPlace {
     type Storage = NullStorage<Self>;
 }
 
+/// The port a token was placed on
+#[derive(Clone, Debug, Default)]
+pub struct PlacedPort(pub Option<BasePort>);
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RunPlaceTokenSystem(pub bool);
 
-pub struct PlaceTokenSystem {
-    port_sender: Sender<BasePort>,
-}
-
-impl PlaceTokenSystem {
-    pub fn new(port_sender: Sender<BasePort>) -> Self {
-        Self { port_sender }
-    }
-}
+pub struct PlaceTokenSystem;
 
 #[derive(SystemData)]
 pub struct PlaceTokenSystemData<'a> {
     run: Read<'a, RunPlaceTokenSystem>,
+    placed_port: Write<'a, PlacedPort>,
     tokens: ReadStorage<'a, TokenToPlace>,
     token_slots: ReadStorage<'a, TokenSlot>,
     colliders: ReadStorage<'a, Collider>,
@@ -370,9 +395,131 @@ impl<'a> System<'a> for PlaceTokenSystem {
 
         for (_, collider, port) in (&data.token_slots, &data.colliders, &data.ports).join() {
             if collider.clicked() {
-                self.port_sender.send(port.0.clone()).expect("Port receiver is missing");
+                data.placed_port.0 = Some(port.0.clone());
                 break;
             }
+        }
+    }
+}
+
+/// A place where the player token can get added
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TileSlot;
+
+impl Component for TileSlot {
+    type Storage = NullStorage<Self>;
+}
+
+/// The token that's being placed
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TileToPlace;
+
+impl Component for TileToPlace {
+    type Storage = NullStorage<Self>;
+}
+
+/// The location a tile was placed on
+#[derive(Clone, Debug, Default)]
+pub struct PlacedTLoc(pub Option<BaseTLoc>);
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RunPlaceTileSystem(pub bool);
+
+pub struct PlaceTileSystem;
+
+#[derive(SystemData)]
+pub struct PlaceTileSystemData<'a> {
+    run: Read<'a, RunPlaceTileSystem>,
+    placed_loc: Write<'a, PlacedTLoc>,
+    tiles: ReadStorage<'a, TileToPlace>,
+    tile_slots: ReadStorage<'a, TileSlot>,
+    colliders: ReadStorage<'a, Collider>,
+    locs: ReadStorage<'a, TLocLabel>,
+    transforms: WriteStorage<'a, Transform>,
+    input: Option<Read<'a, BoardInput>>,
+}
+
+impl<'a> System<'a> for PlaceTileSystem {
+    type SystemData = PlaceTileSystemData<'a>;
+    
+    fn run(&mut self, mut data: Self::SystemData) {
+        if !data.run.0 { return }
+
+        let position = (&data.tile_slots, &data.colliders, &data.transforms).join()
+            .flat_map(|(_, collider, transform)| {
+                collider.hovered().then(|| transform.position)
+            })
+            .next();
+
+        for (_, transform) in (&data.tiles, &mut data.transforms).join() {
+            transform.position = if let Some(position) = position {
+                position
+            } else {
+                data.input.as_ref().expect("Missing BoardInput").position()
+            }
+        }
+
+        for (_, collider, loc) in (&data.tile_slots, &data.colliders, &data.locs).join() {
+            if collider.clicked() {
+                data.placed_loc.0 = Some(loc.0.clone());
+                break;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RunSelectTileSystem(pub bool);
+
+pub struct SelectTileSystem;
+
+/// The tile that's currently selected
+#[derive(Clone, Debug, Default)]
+pub struct SelectedTile(pub Option<BaseTile>);
+
+#[derive(SystemData)]
+pub struct SelectTileSystemData<'a> {
+    run: Read<'a, RunSelectTileSystem>,
+    selected_tile: Write<'a, SelectedTile>,
+    models: ReadStorage<'a, Model>,
+    colliders: ReadStorage<'a, Collider>,
+    tiles: ReadStorage<'a, TileLabel>,
+    tile_selects: WriteStorage<'a, TileSelect>,
+}
+
+impl<'a> System<'a> for SelectTileSystem {
+    type SystemData = SelectTileSystemData<'a>;
+
+    fn run(&mut self, mut data: Self::SystemData) {
+        if !data.run.0 { return; }
+
+        // Only do something when the selection is modified
+        if (&data.colliders, &data.tile_selects).join().all(|(c, _)| !c.clicked()) {
+            return;
+        }
+
+        let mut found_selected = false;
+
+        for (collider, tile, tile_select) in (&data.colliders, &data.tiles, &mut data.tile_selects).join() {
+            if found_selected {
+                tile_select.selected = false;
+                continue;
+            }
+
+            tile_select.selected = collider.clicked();
+            if collider.clicked() {
+                found_selected = true;
+                data.selected_tile.0 = Some(tile.0.clone());
+            }
+        }
+
+        // Update selection visualization
+        for (model, tile_select) in (&data.models, &data.tile_selects).join() {
+            let elem = document().get_element_by_id(&model.id).expect("Missing model element");
+            elem.set_attribute(
+                "class", 
+                if tile_select.selected { "tile-selected" } else { "tile-unselected" }
+            ).expect("Cannot set tile select style");
         }
     }
 }
@@ -383,6 +530,12 @@ pub trait BoardExt: Board {
     fn render(&self) -> SvgElement;
 
     fn port_position(&self, port: &Self::Port) -> Pt2;
+
+    /// Render the collider for a specific tile location.
+    fn render_collider(&self, loc: &Self::TLoc) -> SvgElement;
+
+    /// Creates an entity (mainly for collision detection) at a specific tile location.
+    fn create_loc_collider_entity(&self, loc: &Self::TLoc, world: &mut World, id_counter: &mut u64) -> Entity;
 }
 
 impl BoardExt for RectangleBoard {
@@ -407,6 +560,26 @@ impl BoardExt for RectangleBoard {
     fn port_position(&self, port: &<Self as Board>::Port) -> Pt2 {
         port.0.cast::<f64>() + port.1.cast::<f64>() / (self.ports_per_edge() + 1) as f64
     }
+
+    fn render_collider(&self, loc: &Self::TLoc) -> SvgElement {
+        let svg_str = format!(concat!(
+            r##"<g xmlns="{}" fill="transparent">"##,
+            r##"<rect x="-0.5" y="-0.5" width="1" height="1"/>"##,
+            r##"</g>"##
+        ), SVG_NS);
+        parse_svg(&svg_str)
+    }
+
+    fn create_loc_collider_entity(&self, loc: &Self::TLoc, world: &mut World, id_counter: &mut u64) -> Entity {
+        let svg = self.render_collider(loc);
+        world.create_entity()
+            .with(Model::new(&svg, Collider::ORDER_TILE_LOC, &GameWorld::svg_root(), id_counter))
+            .with(Collider::new(&svg))
+            .with(Transform::new(loc.cast() + vector![0.5, 0.5]))
+            .with(TLocLabel(loc.clone().wrap_base()))
+            .with(TileSlot)
+            .build()
+    }
 }
 
 /// Extension trait for BaseBoard, mainly for rendering since
@@ -415,6 +588,9 @@ pub trait BaseBoardExt {
     fn render(&self) -> SvgElement;
     
     fn port_position(&self, port: &BasePort) -> Pt2;
+
+    /// Creates an entity (mainly for collision detection) at a specific tile location.
+    fn create_loc_collider_entity(&self, loc: &BaseTLoc, world: &mut World, id_counter: &mut u64) -> Entity;
 }
 
 for_each_board! {
@@ -432,6 +608,16 @@ for_each_board! {
                 $($($p)*::$x(b) => b.port_position(<$t as Board>::Port::unwrap_base_ref(port))),*
             }
         }
+
+        fn create_loc_collider_entity(&self, loc: &BaseTLoc, world: &mut World, id_counter: &mut u64) -> Entity {
+            match self {
+                $($($p)*::$x(b) => b.create_loc_collider_entity(
+                    <$t as Board>::TLoc::unwrap_base_ref(loc),
+                    world,
+                    id_counter
+                )),*
+            }
+        }
     }
 }
 
@@ -442,7 +628,7 @@ fn regular_polygon_points(n: u32) -> Vec<Vec2> {
     (0..n).map(|i| {
         let angle = TAU * (0.25 + (-0.5 + i as f64) / n as f64);
         let (sin, cos) = angle.sin_cos();
-        Vec2::from([cos * radius, sin * radius])
+        vector![cos * radius, sin * radius]
     }).collect_vec()
 }
 
@@ -459,8 +645,6 @@ fn regular_polygon_svg_str(n: u32) -> String {
 /// the server should know nothing about rendering
 pub trait TileExt: Tile {
     fn render(&self) -> SvgElement;
-
-    fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity;
 }
 
 impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
@@ -472,7 +656,7 @@ impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
             let pts_normals = poly_pts.into_iter()
                 .circular_tuple_windows()
                 .flat_map(|(p0, p1)| {
-                    let normal = Vec2::from([-p1.y + p0.y, p1.x - p0.x]);
+                    let normal = vector![-p1.y + p0.y, p1.x - p0.x];
                     let ports_per_edge = self.ports_per_edge();
                     (0..ports_per_edge).map(move |i|
                         (p0 + (p1 - p0) * (i + 1) as f64 / (ports_per_edge + 1) as f64, normal)
@@ -511,14 +695,6 @@ impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
             parse_svg(&svg_str)
         }
     }
-
-    fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity {
-        let svg = self.render();
-        let wrapper = wrap_svg(&svg.dyn_into().unwrap(), 128);
-        world.create_entity()
-            .with(Model::new(&wrapper, 0, &GameWorld::bottom_panel(), id_counter))
-            .build()
-    }
 }
 
 /// Extension trait for BaseTile, mainly for rendering since
@@ -527,6 +703,8 @@ pub trait BaseTileExt {
     fn render(&self) -> SvgElement;
 
     fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity;
+
+    fn create_to_place_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity;
 }
 
 for_each_tile! {
@@ -538,7 +716,30 @@ for_each_tile! {
         }
 
         fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity {
-            match self { $($($p)*::$x(b) => b.create_hand_entity(world, id_counter)),* }
+            match self { $($($p)*::$x(b) => {
+                let svg = self.render();
+                let wrapper = wrap_svg(&svg.dyn_into().unwrap(), 128);
+                wrapper.set_attribute("class", "tile-unselected").expect("Cannot set tile select class");
+                world.create_entity()
+                    .with(TileLabel(self.clone()))
+                    .with(Model::new(&wrapper, 0, &GameWorld::bottom_panel(), id_counter))
+                    .with(Collider::new(&wrapper))
+                    .with(TileSelect::default())
+                    .build()
+            }),* }
+        }
+
+        fn create_to_place_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity {
+            match self { $($($p)*::$x(b) => {
+                let svg = self.render();
+                world.create_entity()
+                    .with(TileLabel(self.clone()))
+                    .with(Model::new(&svg, Model::ORDER_TILE, &GameWorld::svg_root(), id_counter))
+                    .with(Collider::new(&svg))
+                    .with(TileToPlace)
+                    .with(Transform::new(Pt2::origin()))
+                    .build()
+            }),* }
         }
     }
 }
