@@ -3,7 +3,7 @@ use specs::prelude::*;
 use enum_dispatch::enum_dispatch;
 use common::game::BaseGame;
 
-use crate::{console_log, render::{self, BaseBoardExt, BaseTileExt, Model, Transform}};
+use crate::{console_log, render::{self, BaseBoardExt, BaseTileExt, Model, TileSelect, Transform}};
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
@@ -21,6 +21,8 @@ pub struct Game {
     pub(crate) token_entities: Vec<Option<Entity>>,
     /// Entites for tiles in the player's hand 
     pub(crate) tile_hand_entities: Vec<Entity>,
+    /// Tiles on the board
+    pub(crate) board_tile_entities: Vec<Entity>,
     /// None if this is being edited
     pub(crate) gameplay_state: Option<gameplay::State>,
 }
@@ -107,6 +109,48 @@ impl Game {
             &mut world.world,
             &mut world.id_counter,
         );
+        self.board_tile_entities.push(board_tile_entity);
+
+        for (player, port) in delta.player_ports().iter().enumerate() {
+            self.set_token_position(world, player as u32, port);
+        }
+
+        if delta.dead_players().contains(&self.state.looker_expect()) {
+            world.world.delete_entities(&self.tile_hand_entities).expect("Entities deleted too early");
+            self.tile_hand_entities.clear();
+        }
+
+        // Delete placed tile if necessary
+        else if delta.tile_placer() == self.state.looker_expect() {
+            let storage = world.world.read_component::<TileSelect>();
+            let (i, kind, index, entity) = self.tile_hand_entities.iter()
+                .enumerate()
+                .find_map(|(i, entity)| {
+                    let tile_select = storage.get(*entity).expect("Hand tile is missing TileSelect");
+                    (tile_select.index() == delta.tile_placed().0 && tile_select.kind() == &delta.tile_placed().1.kind())
+                        .then(|| (i, tile_select.kind().clone(), tile_select.index(), *entity))
+                }).expect("Placed tile not in your hand");
+            std::mem::drop(storage);
+
+            world.world.delete_entity(entity).expect("Entity deleted too early");
+            self.tile_hand_entities.remove(i);
+
+            // Shift indexes
+            let mut storage = world.world.write_component::<TileSelect>();
+            for entity in &self.tile_hand_entities {
+                let tile_select = storage.get_mut(*entity).expect("Hand tile is missing TileSelect");
+                if tile_select.kind() == &kind && tile_select.index() > index {
+                    *tile_select.index_mut() -= 1;
+                }
+            }
+        }
+
+        for (player, index, tile) in delta.drawn_tiles() {
+            if *player == self.state.looker_expect() {
+                let entity = tile.create_hand_entity(*index, &mut world.world, &mut world.id_counter);
+                self.tile_hand_entities.push(entity);
+            }
+        }
     }
 }
 

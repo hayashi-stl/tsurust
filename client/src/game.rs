@@ -130,6 +130,7 @@ impl GameWorld {
             board_entity,
             token_entities: vec![None; num_players as usize],
             tile_hand_entities, 
+            board_tile_entities: vec![],
             gameplay_state: Some(gameplay::PlaceToken{ start_ports, token_entity }.into()),
         };
 

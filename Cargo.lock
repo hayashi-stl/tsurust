@@ -286,6 +286,7 @@ dependencies = [
  "console_error_panic_hook",
  "enum_dispatch",
  "futures 0.1.31",
+ "getset",
  "html-escape",
  "itertools",
  "js-sys",

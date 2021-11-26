@@ -11,6 +11,7 @@ use common::nalgebra::{ComplexField, vector};
 use common::{board::{BaseBoard, BasePort, Board, RectangleBoard}, for_each_board, for_each_game, game::{BaseGame, Game, PathGame}, math::Vec2, tile::{RegularTile, Tile}};
 use common::board::{BaseTLoc, Port, TLoc};
 use common::tile::{BaseKind, BaseTile, Kind};
+use getset::{CopyGetters, Getters, MutGetters};
 use itertools::{Itertools, chain, iproduct, izip};
 use specs::prelude::*;
 use wasm_bindgen::{JsCast, prelude::Closure};
@@ -123,11 +124,13 @@ impl Component for TileLabel {
     type Storage = DenseVecStorage<Self>;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Getters, MutGetters, CopyGetters)]
 pub struct TileSelect {
     /// Whether this entity is a selected tile
     selected: bool,
+    #[getset(get = "pub")]
     kind: BaseKind,
+    #[getset(get_copy = "pub", get_mut = "pub")]
     index: u32,
 }
 
@@ -647,18 +650,18 @@ for_each_board! {
 }
 
 /// Gets the point vectors of a `n`-sided regular polygon with unit side length,
-/// centered at the origin, and rotated so there are 2 points with maximum y coordinate.
+/// centered at the origin, and rotated so there are 2 points with minimum y coordinate.
 fn regular_polygon_points(n: u32) -> Vec<Vec2> {
     let radius = 0.5 / (TAU / (2.0 * n as f64)).sin();
     (0..n).map(|i| {
-        let angle = TAU * (0.25 + (-0.5 + i as f64) / n as f64);
+        let angle = TAU * (-0.25 + (-0.5 + i as f64) / n as f64);
         let (sin, cos) = angle.sin_cos();
         vector![cos * radius, sin * radius]
     }).collect_vec()
 }
 
 /// Gets the SVG string that draws a `n`-sided regular polygon with unit side length,
-/// centered at the origin, and rotated so there are 2 points with maximum y coordinate.
+/// centered at the origin, and rotated so there are 2 points with minimum y coordinate.
 fn regular_polygon_svg_str(n: u32) -> String {
     let poly_str = regular_polygon_points(n).into_iter()
         .map(|vec| format!("{},{}", vec.x, vec.y))
