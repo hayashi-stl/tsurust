@@ -47,6 +47,16 @@ macro_rules! wrap_functions {
     };
 }
 
+pub trait WrapBase {
+    type Base;
+
+    fn wrap_base(self) -> Self::Base;
+
+    fn unwrap_base(base: Self::Base) -> Self;
+
+    fn unwrap_base_ref(base: &Self::Base) -> &Self;
+}
+
 #[macro_export]
 macro_rules! impl_wrap_functions {
     (($($vis:tt)*) $base:ident, $variant:ident) => {
@@ -66,6 +76,33 @@ macro_rules! impl_wrap_functions {
             if let $base::$variant(x) = base {
                 x
             } else { panic!("Mismatched type and associated type") }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_wrap_base {
+    ($base:ident :: $variant:ident ( $ty:ty )) => {
+        impl $crate::WrapBase for $ty {
+            type Base = $base;
+
+            fn wrap_base(self) -> Self::Base {
+                Self::Base::$variant(self)
+            }
+
+            fn unwrap_base(base: Self::Base) -> Self {
+                #[allow(irrefutable_let_patterns)]
+                if let Self::Base::$variant(x) = base {
+                    x
+                } else { panic!("Mismatched type and associated type") }
+            }
+
+            fn unwrap_base_ref(base: &Self::Base) -> &Self {
+                #[allow(irrefutable_let_patterns)]
+                if let Self::Base::$variant(x) = base {
+                    x
+                } else { panic!("Mismatched type and associated type") }
+            }
         }
     };
 }

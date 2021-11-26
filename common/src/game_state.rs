@@ -14,10 +14,12 @@ use crate::{
     player_state::PlayerState,
     tile::{BaseKind, RegularTile, Tile, Kind}
 };
+use crate::tile::BaseTile;
 use crate::board_state::BaseBoardState;
 use crate::board::Port;
 use crate::player_state::BasePlayerState;
 use crate::game::BaseGame;
+use crate::WrapBase;
 
 #[macro_export]
 macro_rules! for_each_game_state {
@@ -105,13 +107,31 @@ for_each_game_state! {
         pub fn place_player(&mut self, player: u32, port: &BasePort) {
             match self { $($($p)*::$x(s) => s.place_player(player, Port::unwrap_base_ref(port))),* }
         }
+
+        /// Have the current player take a turn by placing a tile of kind `kind` from index `index` in their hand to location `loc`.
+        /// The turn is processed and then advances to the next player.
+        pub fn take_turn_placing_tile(&mut self, game: &BaseGame, kind: &BaseKind, index: u32, loc: &BaseTLoc) -> BaseTurnResult {
+            match self { $($($p)*::$x(s) => {
+                let res = s.take_turn_placing_tile(
+                    <$t as GameStateT>::Game::unwrap_base_ref(game),
+                    Kind::unwrap_base_ref(kind),
+                    index,
+                    TLoc::unwrap_base_ref(loc),
+                );
+                BaseTurnResult {
+                    tile_placer: res.tile_placer,
+                    tile_placed: (res.tile_placed.0, res.tile_placed.1.wrap_base()),
+                    tile_loc: res.tile_loc.wrap_base(),
+                    player_ports: res.player_ports.into_iter().map(|p| p.wrap_base()).collect(),
+                    dead_players: res.dead_players,
+                    num_tiles_left: res.num_tiles_left.into_iter().map(|(k, n)| (k.wrap_base(), n)).collect(),
+                    drawn_tiles: res.drawn_tiles.into_iter().map(|(p, t)| (p, t.wrap_base())).collect(),
+                }
+            }),* }
+        }
     }
 
-    $(
-        impl $t {
-            $crate::impl_wrap_functions!((pub) BaseGameState, $x);
-        }
-    )*
+    $($crate::impl_wrap_base!(BaseGameState::$x($t)))*;
 }
 
 /// This trait is just to make the macro work
@@ -144,7 +164,7 @@ impl<G: Game> GameState<G> {
         tiles.sort_by_key(|tile| tile.kind().clone());
         let groups = tiles.into_iter().group_by(|tile| tile.kind().clone());
         let mut tiles = groups.into_iter().map(|(kind, tiles)|
-            (kind, tiles.collect::<VecDeque<_>>())).collect::<FnvHashMap<_, _>>();
+            (kind, tiles.map(|t| t.with_visible(false)).collect::<VecDeque<_>>())).collect::<FnvHashMap<_, _>>();
         for tiles in tiles.values_mut() {
             tiles.make_contiguous().shuffle(&mut pcg64!("Generating tiles for game"));
         }
@@ -162,7 +182,7 @@ impl<G: Game> GameState<G> {
             let num_tiles = game.num_tiles_per_player(&kind);
             (0..num_players).cycle().take((num_tiles * num_players) as usize).map(|player| {
                 state.deal_tile(player, &kind)
-            }).all(|b| b);
+            }).all(|b| b.is_some());
         }
 
         state
@@ -203,11 +223,14 @@ impl<G: Game> GameState<G> {
         self.tiles.get_mut(kind).expect("Each kind should have a list of tiles").pop_front()
     }
 
-    /// Deals a tile of a specific kind to a specific player. Returns whether a tile was actually dealt
-    pub fn deal_tile(&mut self, player: u32, kind: &G::Kind) -> bool {
+    /// Deals a tile of a specific kind to a specific player. Returns the tile dealt if one was dealt.
+    pub fn deal_tile(&mut self, player: u32, kind: &G::Kind) -> Option<G::Tile> {
         self.next_tile(kind).zip(self.player_states[player as usize].as_mut())
-            .map(|(tile, state)| state.add_tile(tile))
-            .is_some()
+            .map(|(mut tile, state)| {
+                tile.set_visible(self.looker.map_or(true, |looker| player == looker));
+                state.add_tile(tile.clone());
+                tile
+            })
     }
 
     /// Place a player on some port.
@@ -222,9 +245,11 @@ impl<G: Game> GameState<G> {
 
     /// Have a player place a tile with some kind from some position in their hand to a location on the board.
     /// For now, assumes the player is alive.
-    pub fn player_place_tile(&mut self, player: u32, kind: &G::Kind, index: u32, loc: &G::TLoc) {
-        let tile = self.player_states[player as usize].as_mut().unwrap().remove_tile(kind, index);
-        self.place_tile(tile, loc)
+    /// Returns the tile placed.
+    pub fn player_place_tile(&mut self, player: u32, kind: &G::Kind, index: u32, loc: &G::TLoc) -> G::Tile {
+        let tile = self.player_states[player as usize].as_mut().unwrap().remove_tile(kind, index).with_visible(true);
+        self.place_tile(tile.clone(), loc);
+        tile
     }
 
     /// Whether all players placed their tokens
@@ -246,7 +271,11 @@ impl<G: Game> GameState<G> {
     /// Prioritize giving tiles to players with less tiles, then players whose turn is sooner, if this is impossible.
     /// 
     /// This is intended to be called before updating whose turn it is.
-    fn redistribute_tiles(&mut self, game: &G) {
+    /// 
+    /// Returns a list of tiles added to player's hands in the form (player, tile)
+    fn redistribute_tiles(&mut self, game: &G) -> Vec<(u32, G::Tile)> {
+        let mut new_tiles = vec![];
+
         for kind in game.board().all_kinds() {
             let num_tiles = game.num_tiles_per_player(&kind);
             let turn_player = self.turn_player();
@@ -259,23 +288,28 @@ impl<G: Game> GameState<G> {
                 .collect_vec();
 
             for player in deal_tile_order {
-                if !self.deal_tile(player, &kind) {
+                if let Some(tile) = self.deal_tile(player, &kind) {
+                    new_tiles.push((player, tile));
+                } else {
                     break;
                 }
             }
         }
+
+        new_tiles
     }
 
     /// Removes tiles from dead players.
     /// Assumes the players were just alive
-    pub fn handle_dead_players(&mut self, game: &G, players: Vec<u32>) {
+    pub fn handle_dead_players(&mut self, game: &G, players: &[u32]) {
         let tiles = players.into_iter().flat_map(|player| {
-            let tiles = self.player_states[player as usize].as_mut().unwrap().remove_all_tiles();
-            self.player_states[player as usize] = None;
+            let tiles = self.player_states[*player as usize].as_mut().unwrap().remove_all_tiles();
+            self.player_states[*player as usize] = None;
             tiles
         }).collect_vec();
 
-        for tile in tiles {
+        for mut tile in tiles {
+            tile.set_visible(false);
             self.tiles.get_mut(&tile.kind()).unwrap().push_back(tile);
         }
     }
@@ -306,16 +340,18 @@ impl<G: Game> GameState<G> {
 
     /// Have the current player take a turn by placing a tile of kind `kind` from index `index` in their hand to location `loc`.
     /// The turn is processed and then advances to the next player.
-    pub fn take_turn_placing_tile(&mut self, game: &G, kind: &G::Kind, index: u32, loc: &G::TLoc) {
-        self.player_place_tile(self.turn_player(), kind, index, loc);
+    pub fn take_turn_placing_tile(&mut self, game: &G, kind: &G::Kind, index: u32, loc: &G::TLoc) -> TurnResult<G> {
+        let tile_placer = self.turn_player;
+
+        let tile_placed = self.player_place_tile(self.turn_player(), kind, index, loc);
         let dead = self.advance_players(game.board(), loc);
         let players_died = dead.len() > 0;
-        self.handle_dead_players(game, dead);
-        if players_died {
-            self.redistribute_tiles(game);
+        self.handle_dead_players(game, &dead);
+        let drawn_tiles = if players_died {
+            self.redistribute_tiles(game)
         } else {
-            self.deal_tile(self.turn_player, kind);
-        }
+            self.deal_tile(self.turn_player, kind).map(|tile| (self.turn_player, tile)).into_iter().collect()
+        };
 
         if let Some(next) = (0..self.num_players()).cycle().skip(self.turn_player() as usize + 1).take(self.num_players() as usize)
             .filter(|player| self.player_state(*player).is_some()).next()
@@ -324,7 +360,76 @@ impl<G: Game> GameState<G> {
         } else {
             unimplemented!("What to do when all players are dead")
         }
+
+        let player_ports = (0..self.num_players())
+            .map(|player| self.board_state().player_port(player).expect("Players should have placed ports").clone())
+            .collect();
+        let num_tiles_left = self.tiles.iter()
+            .map(|(kind, tiles)| (kind.clone(), tiles.len() as u32))
+            .collect();
+
+        TurnResult {
+            tile_placer,
+            tile_placed: (index, tile_placed),
+            tile_loc: loc.clone(),
+            player_ports,
+            dead_players: dead,
+            num_tiles_left,
+            drawn_tiles,
+        }
     }
+}
+
+/// The stuff that happened during a turn
+#[derive(Clone, Debug, Getters, CopyGetters)]
+pub struct TurnResult<G: Game> {
+    /// The player who placed the tile
+    #[getset(get_copy = "pub")]
+    tile_placer: u32,
+    /// index and tile placed
+    #[getset(get = "pub")]
+    tile_placed: (u32, G::Tile),
+    /// Where the tile was placed
+    #[getset(get = "pub")]
+    tile_loc: G::TLoc,
+    /// New locations of players, indexed by player
+    #[getset(get = "pub")]
+    player_ports: Vec<G::Port>,
+    /// Which players died
+    #[getset(get = "pub")]
+    dead_players: Vec<u32>,
+    /// New number of tiles per kind in the draw pile
+    #[getset(get = "pub")]
+    num_tiles_left: Vec<(G::Kind, u32)>,
+    /// New tiles drawn by players
+    #[getset(get = "pub")]
+    drawn_tiles: Vec<(u32, G::Tile)>,
+}
+
+/// The stuff that happened during a turn
+#[derive(Clone, Debug, Getters, CopyGetters)]
+pub struct BaseTurnResult {
+    /// The player who placed the tile
+    #[getset(get_copy = "pub")]
+    tile_placer: u32,
+    /// index and tile placed
+    #[getset(get = "pub")]
+    tile_placed: (u32, BaseTile),
+    /// Where the tile was placed
+    #[getset(get = "pub")]
+    tile_loc: BaseTLoc,
+    /// New locations of players, indexed by player
+    #[getset(get = "pub")]
+    player_ports: Vec<BasePort>,
+    /// Which players died
+    #[getset(get = "pub")]
+    dead_players: Vec<u32>,
+    /// New number of tiles per kind in the draw pile
+    #[getset(get = "pub")]
+    num_tiles_left: Vec<(BaseKind, u32)>,
+    /// New tiles drawn by players
+    #[getset(get = "pub")]
+    drawn_tiles: Vec<(u32, BaseTile)>,
 }
 
 #[cfg(test)]

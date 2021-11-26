@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{board::Board, game::Game, tile::{RegularTile, Tile}};
 use crate::tile::{BaseKind, BaseTile, Kind};
+use crate::WrapBase;
 
 #[macro_export]
 macro_rules! for_each_player_state {
@@ -45,11 +46,7 @@ for_each_player_state! {
         }
     }
 
-    $(
-        impl $t {
-            $crate::impl_wrap_functions!((pub) BasePlayerState, $x);
-        }
-    )*
+    $($crate::impl_wrap_base!(BasePlayerState::$x($t)))*;
 }
 
 /// The state of a player
@@ -97,14 +94,10 @@ impl<T: Tile> PlayerState<T> {
 
     /// Returns the state of `player` visible to `looker`
     pub fn visible_state(&self, player: u32, looker: u32) -> PlayerState<T> {
-        if player == looker {
-            self.clone()
-        } else {
-            let mut result = self.clone();
-            for tile in result.tiles.values_mut().into_iter().flatten() {
-                tile.set_visible(false);
-            }
-            result
+        let mut result = self.clone();
+        for tile in result.tiles.values_mut().into_iter().flatten() {
+            tile.set_visible(player == looker);
         }
+        result
     }
 }

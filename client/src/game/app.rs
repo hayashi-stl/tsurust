@@ -1,9 +1,9 @@
-use common::{board::BasePort, game_state::BaseGameState, message::{Request, Response}};
+use common::{board::{BasePort, BaseTLoc}, game_state::BaseGameState, message::{Request, Response}, tile::BaseKind};
 use specs::prelude::*;
 use enum_dispatch::enum_dispatch;
 use common::game::BaseGame;
 
-use crate::render::{self, BaseBoardExt, Model, Transform};
+use crate::{console_log, render::{self, BaseBoardExt, BaseTileExt, Model, Transform}};
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
@@ -55,9 +55,16 @@ impl AppStateT for Game {
     }
 
     fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
-        if let Response::PlacedToken{ player, port } = &response {
-            self.set_token_position(world, *player, port);
-        } // and let the gameplay state handle it too
+        match &response {
+            Response::PlacedToken{ player, port } =>
+                self.set_token_position(world, *player, port),
+
+            Response::PlacedTile{ player, kind, index, loc } =>
+                self.take_turn_placing_tile(world, *player, kind, *index, loc),
+
+            _ => {}
+        }
+        // and let the gameplay state handle it too
 
         self.gameplay_state = Some(self.gameplay_state.take()
             .expect("Missing gameplay state")
@@ -89,6 +96,18 @@ impl Game {
                 .build());
         }
     }
+
+    pub fn take_turn_placing_tile(&mut self, world: &mut GameWorld, player: u32, kind: &BaseKind, index: u32, loc: &BaseTLoc) {
+        let delta = self.state.take_turn_placing_tile(&self.game, kind, index, loc);
+        console_log!("Change: {:?}", delta);
+
+        let board_tile_entity = delta.tile_placed().1.create_on_board_entity(
+            &self.game.board(),
+            &delta.tile_loc(),
+            &mut world.world,
+            &mut world.id_counter,
+        );
+    }
 }
 
 #[enum_dispatch(AppStateT)]
@@ -105,7 +124,7 @@ pub mod gameplay {
     use enum_dispatch::enum_dispatch;
     use common::{message::{Request, Response}};
 
-    use crate::{console_log, game::{GameWorld, app}, render::{BaseBoardExt, BaseTileExt, PlacedPort, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace}};
+    use crate::{console_log, game::{GameWorld, app}, render::{BaseBoardExt, BaseTileExt, PlacedPort, PlacedTLoc, RunPlaceTileSystem, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace}};
 
     #[derive(Debug)]
     pub struct PlaceToken {
@@ -131,6 +150,15 @@ pub mod gameplay {
     pub struct PlaceTile {
         pub(crate) locs: Vec<Entity>,
         pub(crate) tile_entity: Option<Entity>,
+        pub(crate) tile_index: u32,
+    }
+
+    /// Waiting for the server to check the validity of the tile placement
+    #[derive(Debug)]
+    pub struct WaitPlaceTileCheck {
+        pub(crate) locs: Vec<Entity>,
+        pub(crate) tile_entity: Option<Entity>,
+        pub(crate) tile_index: u32,
     }
 
     #[enum_dispatch]
@@ -211,7 +239,8 @@ pub mod gameplay {
 
                 PlaceTile {
                     locs,
-                    tile_entity: None
+                    tile_entity: None,
+                    tile_index: 0,
                 }.into()
             } else {
                 self.into()
@@ -221,27 +250,83 @@ pub mod gameplay {
 
     impl GameplayStateT for PlaceTile {
         fn update(mut self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
-            let selected_tile = world.world.fetch::<SelectedTile>();
-            let storage = world.world.read_component::<TileLabel>();
-            let tile_label = self.tile_entity.map(|entity| 
-                &storage.get(entity).expect("Tile entity should have TileLabel").0
-            );
+            // Tile selection
+            {
+                let selected_tile = world.world.fetch::<SelectedTile>();
+                let storage = world.world.read_component::<TileLabel>();
+                let tile_label = self.tile_entity.map(|entity| 
+                    &storage.get(entity).expect("Tile entity should have TileLabel").0
+                );
 
-            if selected_tile.0.as_ref() != tile_label {
-                // Replace tile to place
-                let tile = selected_tile.0.clone();
-                std::mem::drop((selected_tile, storage));
-                self.tile_entity.map(|entity| world.world.delete_entity(entity).ok());
-                if let Some(tile) = tile {
-                    self.tile_entity = Some(tile.create_to_place_entity(&mut world.world, &mut world.id_counter));
+                self.tile_index = selected_tile.0;
+                if selected_tile.1.as_ref() != tile_label {
+                    // Replace tile to place
+                    let tile = selected_tile.1.clone();
+                    std::mem::drop((selected_tile, storage));
+                    self.tile_entity.map(|entity| world.world.delete_entity(entity).ok());
+                    if let Some(tile) = tile {
+                        self.tile_entity = Some(tile.create_to_place_entity(&mut world.world, &mut world.id_counter));
+                    }
                 }
             }
 
-            self.into()
+            // Tile placement
+            world.world.get_mut::<RunPlaceTileSystem>().expect("Missing RunPlaceTileSystem").0 = true;
+            if let (Some(loc), Some(tile_entity)) = (
+                world.world.get_mut::<PlacedTLoc>().expect("Missing PlacedTLoc").0.take(),
+                self.tile_entity
+            ) {
+                // Suspend while waiting for the check
+                world.world.get_mut::<RunPlaceTileSystem>().expect("Missing RunPlaceTileSystem").0 = false;
+                let kind = world.world.read_component::<TileLabel>().get(tile_entity)
+                    .expect("Tile is missing label").0.kind();
+                requests.push(Request::PlaceTile {
+                    player: app.state.looker_expect(),
+                    kind,
+                    index: self.tile_index,
+                    loc
+                });
+
+                WaitPlaceTileCheck {
+                    locs: self.locs,
+                    tile_entity: self.tile_entity,
+                    tile_index: self.tile_index
+                }.into()
+            } else {
+                self.into()
+            }
         }
 
         fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
             self.into()
+        }
+    }
+
+    impl GameplayStateT for WaitPlaceTileCheck {
+        fn update(self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
+            self.into()
+        }
+
+        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
+            match response {
+                Response::PlacedTile{ player, kind, index, loc } => if player == app.state.looker_expect() {
+                    self.tile_entity.map(|e| world.world.delete_entity(e).expect("Entity was deleted too early"));
+                    world.world.delete_entities(&self.locs).expect("Entity was deleted too early");
+                    WaitTurn.into()
+                } else {
+                    self.into()
+                },
+
+                Response::Rejected => {
+                    PlaceTile {
+                        locs: self.locs,
+                        tile_entity: self.tile_entity,
+                        tile_index: self.tile_index
+                    }.into()
+                },
+
+                _ => self.into()
+            }
         }
     }
 
@@ -253,6 +338,7 @@ pub mod gameplay {
         WaitPlaceTokens,
         WaitTurn,
         PlaceTile,
+        WaitPlaceTileCheck,
     }
 
     // Workaround for enum_dispatch bug

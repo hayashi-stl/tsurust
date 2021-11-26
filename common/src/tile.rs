@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::board::PortsPerEdgeTileConfig;
 use crate::{wrap_functions, impl_wrap_functions};
+use crate::WrapBase;
 
 pub trait Kind: Clone + Debug + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
     wrap_functions!(BaseKind);
@@ -46,13 +47,18 @@ for_each_tile! {
     }
 
     impl BaseTile {
+        /// The kind of the tile
+        pub fn kind(&self) -> BaseKind {
+            match self { $($($p)*::$x(s) => s.kind().clone().wrap_base()),* }
+        }
+
+        /// Rotate the tile `num_times` times counterclockwise.
+        pub fn rotate(&self, num_times: i32) -> Self {
+            match self { $($($p)*::$x(s) => s.rotate(num_times).wrap_base()),* }
+        }
     }
 
-    $(
-        impl $t {
-            $crate::impl_wrap_functions!((pub) BaseTile, $x);
-        }
-    )*
+    $($crate::impl_wrap_base!(BaseTile::$x($t)))*;
 }
 
 /// A tile in the path game, parameterized by kind

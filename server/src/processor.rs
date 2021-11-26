@@ -76,7 +76,26 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
             }
         }
 
-        _ => FnvHashMap::default(),
+        Request::PlaceTile{ player, kind, index, loc } => {
+            if let (game, Some(game_state)) = state.game_mut().game_and_state_mut() {
+                if game_state.can_place_tile(game, player, &kind, index, &loc) {
+                    game_state.take_turn_placing_tile(game, &kind, index, &loc);
+                    let turn_player = game_state.turn_player();
+
+                    state.peers().iter().map(|(addr, _)| {(*addr,
+                        if let Some(i) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                            Some(Response::PlacedTile { player, kind: kind.clone(), index, loc: loc.clone() }),
+                            (turn_player == i as u32).then(|| Response::YourTurn),
+                        ].into_iter().flatten().collect()} else { vec![] }
+                    )}).collect()
+                } else {
+                    iter::once((requester, vec![Response::Rejected])).collect()
+                }
+            } else {
+                warn!("Game state is missing");
+                FnvHashMap::default()
+            }
+        }
     }
 }
 

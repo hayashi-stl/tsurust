@@ -72,11 +72,7 @@ for_each_board! {
         }
     }
 
-    $(
-        impl $t {
-            $crate::impl_wrap_functions!((pub) BaseBoard, $x);
-        }
-    )*
+    $($crate::impl_wrap_base!(BaseBoard::$x($t)))*;
 }
 
 /// A board in the path game, parameterized by player location (port) type, tile location type, and tile kind type

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{board::{Board, Port, RectangleBoard, TLoc}, game_state::GameState, tile::{Kind, RegularTile, Tile}};
 use crate::game_state::BaseGameState;
 use crate::board::BaseBoard;
+use crate::WrapBase;
 
 #[enum_dispatch]
 pub trait GenericGame {
@@ -66,11 +67,7 @@ for_each_game! {
         }
     }
 
-    $(
-        impl $t {
-            $crate::impl_wrap_functions!((pub) BaseGame, $x);
-        }
-    )*
+    $($crate::impl_wrap_base!(BaseGame::$x($t)))*;
 }
 
 pub trait Game: Clone + Debug + Serialize {

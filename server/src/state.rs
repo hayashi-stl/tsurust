@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 
 use common::{board::{Board, RectangleBoard}, game::PathGame, message::Response};
+use common::WrapBase;
 use fnv::FnvHashMap;
 use futures::channel::mpsc::UnboundedSender;
 use getset::{Getters, MutGetters};

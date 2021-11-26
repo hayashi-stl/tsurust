@@ -42,7 +42,7 @@ impl GameWorld {
         world.insert(RunSelectTileSystem(true));
         world.insert(RunPlaceTileSystem(true));
         world.insert(PlacedPort(None));
-        world.insert(SelectedTile(None));
+        world.insert(SelectedTile(0, None));
         world.insert(PlacedTLoc(None));
 
         let dispatcher = DispatcherBuilder::new()
@@ -118,8 +118,10 @@ impl GameWorld {
         let tile_hand_entities = state.player_state(state.looker_expect())
             .map_or(vec![], |state| state.tiles_vec())
             .into_iter()
-            .flat_map(|(kind, tiles)| tiles.into_iter().map(move |tile| (kind.clone(), tile)))
-            .map(|(_, tile)| tile.create_hand_entity(&mut self.world, &mut self.id_counter))
+            .flat_map(|(kind, tiles)| {
+                tiles.into_iter().enumerate().map(move |(index, tile)| (kind.clone(), index as u32, tile))
+            })
+            .map(|(_, index, tile)| tile.create_hand_entity(index, &mut self.world, &mut self.id_counter))
             .collect_vec();
 
         let mut game_state = app::Game {

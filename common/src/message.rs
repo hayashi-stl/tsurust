@@ -36,4 +36,12 @@ pub enum Response {
     AllPlacedTokens,
     /// It's your turn, make a move
     YourTurn,
+    /// Player `player` has placed a tile from index `index` in their list of tiles of kind `kind` onto location `loc`.
+    PlacedTile{ player: u32, kind: BaseKind, index: u32, loc: BaseTLoc },
+    ///// Players moved across tiles. Stores a port per player
+    //CrossedTiles{ new_ports: Vec<G::Port> },
+    ///// Players died. Stores players that died
+    //Died{ dead: Vec<u32> },
+    ///// Tiles have been dealt. Stores number of tiles dealt and new tiles per player.
+    //DealtTiles{ num_tiles_dealt: u32,  }
 }

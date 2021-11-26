@@ -123,10 +123,18 @@ impl Component for TileLabel {
     type Storage = DenseVecStorage<Self>;
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TileSelect {
     /// Whether this entity is a selected tile
     selected: bool,
+    kind: BaseKind,
+    index: u32,
+}
+
+impl TileSelect {
+    fn new(kind: BaseKind, index: u32) -> Self {
+        Self { selected: false, kind, index }
+    }
 }
 
 impl Component for TileSelect {
@@ -150,6 +158,7 @@ impl Model {
     pub const ORDER_BOARD: i32 = 0;
     pub const ORDER_TILE: i32 = 1;
     pub const ORDER_PLAYER_TOKEN: i32 = 2;
+    pub const ORDER_TILE_HOVER: i32 = 3;
 
     /// Adds an element to a parent node, taking a counter that is used for the id and increments.
     /// Also takes a rendering order.
@@ -473,9 +482,10 @@ pub struct RunSelectTileSystem(pub bool);
 
 pub struct SelectTileSystem;
 
-/// The tile that's currently selected
+/// The tile that's currently selected, paired with its index
+/// into the list of tiles the player has of the same kind
 #[derive(Clone, Debug, Default)]
-pub struct SelectedTile(pub Option<BaseTile>);
+pub struct SelectedTile(pub u32, pub Option<BaseTile>);
 
 #[derive(SystemData)]
 pub struct SelectTileSystemData<'a> {
@@ -509,7 +519,8 @@ impl<'a> System<'a> for SelectTileSystem {
             tile_select.selected = collider.clicked();
             if collider.clicked() {
                 found_selected = true;
-                data.selected_tile.0 = Some(tile.0.clone());
+                data.selected_tile.0 = tile_select.index;
+                data.selected_tile.1 = Some(tile.0.clone());
             }
         }
 
@@ -530,6 +541,8 @@ pub trait BoardExt: Board {
     fn render(&self) -> SvgElement;
 
     fn port_position(&self, port: &Self::Port) -> Pt2;
+
+    fn loc_position(&self, loc: &Self::TLoc) -> Pt2;
 
     /// Render the collider for a specific tile location.
     fn render_collider(&self, loc: &Self::TLoc) -> SvgElement;
@@ -561,6 +574,10 @@ impl BoardExt for RectangleBoard {
         port.0.cast::<f64>() + port.1.cast::<f64>() / (self.ports_per_edge() + 1) as f64
     }
 
+    fn loc_position(&self, loc: &Self::TLoc) -> Pt2 {
+        loc.cast() + vector![0.5, 0.5]
+    }
+
     fn render_collider(&self, loc: &Self::TLoc) -> SvgElement {
         let svg_str = format!(concat!(
             r##"<g xmlns="{}" fill="transparent">"##,
@@ -575,7 +592,7 @@ impl BoardExt for RectangleBoard {
         world.create_entity()
             .with(Model::new(&svg, Collider::ORDER_TILE_LOC, &GameWorld::svg_root(), id_counter))
             .with(Collider::new(&svg))
-            .with(Transform::new(loc.cast() + vector![0.5, 0.5]))
+            .with(Transform::new(self.loc_position(loc)))
             .with(TLocLabel(loc.clone().wrap_base()))
             .with(TileSlot)
             .build()
@@ -588,6 +605,8 @@ pub trait BaseBoardExt {
     fn render(&self) -> SvgElement;
     
     fn port_position(&self, port: &BasePort) -> Pt2;
+
+    fn loc_position(&self, loc: &BaseTLoc) -> Pt2;
 
     /// Creates an entity (mainly for collision detection) at a specific tile location.
     fn create_loc_collider_entity(&self, loc: &BaseTLoc, world: &mut World, id_counter: &mut u64) -> Entity;
@@ -606,6 +625,12 @@ for_each_board! {
         fn port_position(&self, port: &BasePort) -> Pt2 {
             match self {
                 $($($p)*::$x(b) => b.port_position(<$t as Board>::Port::unwrap_base_ref(port))),*
+            }
+        }
+
+        fn loc_position(&self, loc: &BaseTLoc) -> Pt2 {
+            match self {
+                $($($p)*::$x(b) => b.loc_position(<$t as Board>::TLoc::unwrap_base_ref(loc))),*
             }
         }
 
@@ -702,9 +727,13 @@ impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
 pub trait BaseTileExt {
     fn render(&self) -> SvgElement;
 
-    fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity;
+    fn create_hand_entity(&self, index: u32, world: &mut World, id_counter: &mut u64) -> Entity;
+
+    fn create_board_entity_common<'a>(&self, world: &'a mut World, id_counter: &mut u64) -> EntityBuilder<'a>;
 
     fn create_to_place_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity;
+
+    fn create_on_board_entity(&self, board: &BaseBoard, loc: &BaseTLoc, world: &mut World, id_counter: &mut u64) -> Entity;
 }
 
 for_each_tile! {
@@ -715,7 +744,7 @@ for_each_tile! {
             match self { $($($p)*::$x(b) => b.render()),* }
         }
 
-        fn create_hand_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity {
+        fn create_hand_entity(&self, index: u32, world: &mut World, id_counter: &mut u64) -> Entity {
             match self { $($($p)*::$x(b) => {
                 let svg = self.render();
                 let wrapper = wrap_svg(&svg.dyn_into().unwrap(), 128);
@@ -724,20 +753,35 @@ for_each_tile! {
                     .with(TileLabel(self.clone()))
                     .with(Model::new(&wrapper, 0, &GameWorld::bottom_panel(), id_counter))
                     .with(Collider::new(&wrapper))
-                    .with(TileSelect::default())
+                    .with(TileSelect::new(self.kind(), index))
                     .build()
+            }),* }
+        }
+
+        fn create_board_entity_common<'a>(&self, world: &'a mut World, id_counter: &mut u64) -> EntityBuilder<'a> {
+            match self { $($($p)*::$x(b) => {
+                world.create_entity()
+                    .with(TileLabel(self.clone()))
             }),* }
         }
 
         fn create_to_place_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity {
             match self { $($($p)*::$x(b) => {
                 let svg = self.render();
-                world.create_entity()
-                    .with(TileLabel(self.clone()))
-                    .with(Model::new(&svg, Model::ORDER_TILE, &GameWorld::svg_root(), id_counter))
-                    .with(Collider::new(&svg))
+                self.create_board_entity_common(world, id_counter)
+                    .with(Model::new(&svg, Model::ORDER_TILE_HOVER, &GameWorld::svg_root(), id_counter))
                     .with(TileToPlace)
                     .with(Transform::new(Pt2::origin()))
+                    .build()
+            }),* }
+        }
+
+        fn create_on_board_entity(&self, board: &BaseBoard, loc: &BaseTLoc, world: &mut World, id_counter: &mut u64) -> Entity {
+            match self { $($($p)*::$x(b) => {
+                let svg = self.render();
+                self.create_board_entity_common(world, id_counter)
+                    .with(Model::new(&svg, Model::ORDER_TILE, &GameWorld::svg_root(), id_counter))
+                    .with(Transform::new(board.loc_position(loc)))
                     .build()
             }),* }
         }

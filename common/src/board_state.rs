@@ -1,5 +1,6 @@
 use fnv::FnvHashMap;
 use itertools::Itertools;
+use log::debug;
 use std::hash::Hash;
 use std::fmt::Debug;
 use enum_dispatch::enum_dispatch;
@@ -42,11 +43,7 @@ for_each_board_state! {
         }
     }
 
-    $(
-        impl $t {
-            $crate::impl_wrap_functions!((pub) BaseBoardState, $x);
-        }
-    )*
+    $($crate::impl_wrap_base!(BaseBoardState::$x($t)))*;
 }
 
 /// The state of the board
@@ -115,7 +112,7 @@ where
 
         let mut dead = vec![];
 
-        while to_advance.iter_mut().map(|(player, maybe_loc)| {
+        while !to_advance.iter_mut().map(|(player, maybe_loc)| {
                 if let Some(loc) = maybe_loc {
                     // Move player
                     let port_in = self.player_port(*player).unwrap();
