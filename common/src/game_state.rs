@@ -14,7 +14,7 @@ use crate::{
     player_state::PlayerState,
     tile::{BaseKind, RegularTile, Tile, Kind}
 };
-use crate::tile::BaseTile;
+use crate::tile::{BaseTile, GAct, BaseGAct};
 use crate::board_state::BaseBoardState;
 use crate::board::Port;
 use crate::player_state::BasePlayerState;
@@ -61,13 +61,14 @@ for_each_game_state! {
             )),* }
         }
 
-        /// Can `player` place a tile of kind `kind` from index `index` in their hand to location `loc`?
-        pub fn can_place_tile(&mut self, game: &BaseGame, player: u32, kind: &BaseKind, index: u32, loc: &BaseTLoc) -> bool {
+        /// Can `player` place a tile of kind `kind` from index `index` in their hand transformed by group action `action` to location `loc`?
+        pub fn can_place_tile(&mut self, game: &BaseGame, player: u32, kind: &BaseKind, index: u32, action: &BaseGAct, loc: &BaseTLoc) -> bool {
             match self { $($($p)*::$x(s) => s.can_place_tile(
                 <$t as GameStateT>::Game::unwrap_base_ref(game),
                 player,
                 <<$t as GameStateT>::Game as Game>::Kind::unwrap_base_ref(kind),
                 index,
+                <<$t as GameStateT>::Game as Game>::GAct::unwrap_base_ref(action),
                 <<$t as GameStateT>::Game as Game>::TLoc::unwrap_base_ref(loc),
             )),* }
         }
@@ -108,14 +109,16 @@ for_each_game_state! {
             match self { $($($p)*::$x(s) => s.place_player(player, Port::unwrap_base_ref(port))),* }
         }
 
-        /// Have the current player take a turn by placing a tile of kind `kind` from index `index` in their hand to location `loc`.
+        /// Have the current player take a turn by placing a tile of kind `kind` from index `index` in their hand
+        /// transformed by group action `action` to location `loc`.
         /// The turn is processed and then advances to the next player.
-        pub fn take_turn_placing_tile(&mut self, game: &BaseGame, kind: &BaseKind, index: u32, loc: &BaseTLoc) -> BaseTurnResult {
+        pub fn take_turn_placing_tile(&mut self, game: &BaseGame, kind: &BaseKind, index: u32, action: &BaseGAct, loc: &BaseTLoc) -> BaseTurnResult {
             match self { $($($p)*::$x(s) => {
                 let res = s.take_turn_placing_tile(
                     <$t as GameStateT>::Game::unwrap_base_ref(game),
                     Kind::unwrap_base_ref(kind),
                     index,
+                    GAct::unwrap_base_ref(action),
                     TLoc::unwrap_base_ref(loc),
                 );
                 BaseTurnResult {
@@ -243,11 +246,13 @@ impl<G: Game> GameState<G> {
         self.board_state.place_tile(tile, loc)
     }
 
-    /// Have a player place a tile with some kind from some position in their hand to a location on the board.
+    /// Have a player place a tile with some kind from some position in their hand, transformed by a group action, to a location on the board.
     /// For now, assumes the player is alive.
     /// Returns the tile placed.
-    pub fn player_place_tile(&mut self, player: u32, kind: &G::Kind, index: u32, loc: &G::TLoc) -> G::Tile {
-        let tile = self.player_states[player as usize].as_mut().unwrap().remove_tile(kind, index).with_visible(true);
+    pub fn player_place_tile(&mut self, player: u32, kind: &G::Kind, index: u32, action: &G::GAct, loc: &G::TLoc) -> G::Tile {
+        let tile = self.player_states[player as usize].as_mut().unwrap().remove_tile(kind, index)
+            .with_visible(true)
+            .apply_action(action);
         self.place_tile(tile.clone(), loc);
         tile
     }
@@ -327,8 +332,8 @@ impl<G: Game> GameState<G> {
         self.turn_player = (self.turn_player + 1) % self.num_players();
     }
 
-    /// Can `player` place a tile of kind `kind` from index `index` in their hand to location `loc`?
-    pub fn can_place_tile(&mut self, game: &G, player: u32, kind: &G::Kind, index: u32, loc: &G::TLoc) -> bool {
+    /// Can `player` place a tile of kind `kind` from index `index` in their hand transformed by group action `action` to location `loc`?
+    pub fn can_place_tile(&mut self, game: &G, player: u32, kind: &G::Kind, index: u32, action: &G::GAct, loc: &G::TLoc) -> bool {
         self.player_states[player as usize].as_ref().map_or(false, |state| index < state.num_tiles_by_kind(kind)) &&
             self.board_state.player_port(player).map_or(false, |port|
                 game.board().port_locs(port).contains(loc)) &&
@@ -338,12 +343,13 @@ impl<G: Game> GameState<G> {
             // if they have a move that doesn't do that. Figure out if this should be checked here.
     }
 
-    /// Have the current player take a turn by placing a tile of kind `kind` from index `index` in their hand to location `loc`.
+    /// Have the current player take a turn by placing a tile of kind `kind` from index `index` in their hand
+    /// transformed by group action `action` to location `loc`.
     /// The turn is processed and then advances to the next player.
-    pub fn take_turn_placing_tile(&mut self, game: &G, kind: &G::Kind, index: u32, loc: &G::TLoc) -> TurnResult<G> {
+    pub fn take_turn_placing_tile(&mut self, game: &G, kind: &G::Kind, index: u32, action: &G::GAct, loc: &G::TLoc) -> TurnResult<G> {
         let tile_placer = self.turn_player;
 
-        let tile_placed = self.player_place_tile(self.turn_player(), kind, index, loc);
+        let tile_placed = self.player_place_tile(self.turn_player(), kind, index, action, loc);
         let dead = self.advance_players(game.board(), loc);
         let players_died = dead.len() > 0;
         self.handle_dead_players(game, &dead);

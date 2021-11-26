@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::game::BaseGame;
 use crate::game_state::BaseGameState;
 use crate::board::{BasePort, BaseTLoc};
-use crate::tile::BaseKind;
+use crate::tile::{BaseKind, BaseGAct};
 
 /// The request type used by the client to communicate to the server
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub enum Request {
     /// Starts the game
     StartGame,
     PlaceToken{ player: u32, port: BasePort },
-    PlaceTile{ player: u32, kind: BaseKind, index: u32, loc: BaseTLoc },
+    PlaceTile{ player: u32, kind: BaseKind, index: u32, action: BaseGAct, loc: BaseTLoc },
     RemovePeer{ addr: SocketAddr },
 }
 
@@ -36,8 +36,9 @@ pub enum Response {
     AllPlacedTokens,
     /// It's your turn, make a move
     YourTurn,
-    /// Player `player` has placed a tile from index `index` in their list of tiles of kind `kind` onto location `loc`.
-    PlacedTile{ player: u32, kind: BaseKind, index: u32, loc: BaseTLoc },
+    /// Player `player` has placed a tile transformed by group action `action`
+    /// from index `index` in their list of tiles of kind `kind` onto location `loc`.
+    PlacedTile{ player: u32, kind: BaseKind, index: u32, action: BaseGAct, loc: BaseTLoc },
     ///// Players moved across tiles. Stores a port per player
     //CrossedTiles{ new_ports: Vec<G::Port> },
     ///// Players died. Stores players that died

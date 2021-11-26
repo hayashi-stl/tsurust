@@ -16,8 +16,19 @@ html, body {
     height: 100%;
 }
 
+.action-panel {
+    flex: 0 0 40px;
+    overflow: scroll;
+    background-color: rgb(119, 141, 158);
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+}
+
 .bottom-panel {
-    flex: 0 0 200px;
+    flex: 0 0 160px;
     overflow: scroll;
     background-color: rgb(119, 141, 158);
     display: flex;

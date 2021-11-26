@@ -10,7 +10,7 @@ use common::math::{Mtx2, Pt2, Vec2f, Vec3f, Vec3u, pt2};
 use common::nalgebra::{ComplexField, vector};
 use common::{board::{BaseBoard, BasePort, Board, RectangleBoard}, for_each_board, for_each_game, game::{BaseGame, Game, PathGame}, math::Vec2, tile::{RegularTile, Tile}};
 use common::board::{BaseTLoc, Port, TLoc};
-use common::tile::{BaseKind, BaseTile, Kind};
+use common::tile::{BaseGAct, BaseKind, BaseTile, Kind};
 use getset::{CopyGetters, Getters, MutGetters};
 use itertools::{Itertools, chain, iproduct, izip};
 use specs::prelude::*;
@@ -117,6 +117,8 @@ impl Component for TLocLabel {
 }
 
 /// Labels an entity with a tile
+/// 
+/// Group actions are *not* preapplied to the tile.
 #[derive(Clone, Debug)]
 pub struct TileLabel(pub BaseTile);
 
@@ -132,11 +134,12 @@ pub struct TileSelect {
     kind: BaseKind,
     #[getset(get_copy = "pub", get_mut = "pub")]
     index: u32,
+    action: BaseGAct,
 }
 
 impl TileSelect {
-    fn new(kind: BaseKind, index: u32) -> Self {
-        Self { selected: false, kind, index }
+    fn new(kind: BaseKind, index: u32, action: BaseGAct) -> Self {
+        Self { selected: false, kind, index, action }
     }
 }
 
@@ -219,6 +222,25 @@ impl BoardInput {
     fn position(&self) -> Pt2 {
         self.position
     }
+}
+
+/// Group action performed by a button press
+#[derive(Clone, Copy, Debug)]
+pub enum ButtonAction {
+    Rotation{ num_times: i32 }
+}
+
+impl ButtonAction {
+    /// Generate the corresponding group action
+    pub fn group_action(&self, tile: &BaseTile) -> BaseGAct {
+        match self {
+            Self::Rotation{ num_times } => tile.rotation_action(*num_times)
+        }
+    }
+}
+
+impl Component for ButtonAction {
+    type Storage = HashMapStorage<Self>;
 }
 
 /// An SVG is used for collision
@@ -485,10 +507,12 @@ pub struct RunSelectTileSystem(pub bool);
 
 pub struct SelectTileSystem;
 
-/// The tile that's currently selected, paired with its index
-/// into the list of tiles the player has of the same kind
+/// The tile that's currently selected, paired with its index and group action
+/// into the list of tiles the player has of the same kind.
+/// 
+/// The group is *not* preapplied to the tile.
 #[derive(Clone, Debug, Default)]
-pub struct SelectedTile(pub u32, pub Option<BaseTile>);
+pub struct SelectedTile(pub u32, pub Option<BaseGAct>, pub Option<BaseTile>);
 
 #[derive(SystemData)]
 pub struct SelectTileSystemData<'a> {
@@ -498,6 +522,7 @@ pub struct SelectTileSystemData<'a> {
     colliders: ReadStorage<'a, Collider>,
     tiles: ReadStorage<'a, TileLabel>,
     tile_selects: WriteStorage<'a, TileSelect>,
+    button_actions: ReadStorage<'a, ButtonAction>,
 }
 
 impl<'a> System<'a> for SelectTileSystem {
@@ -505,6 +530,16 @@ impl<'a> System<'a> for SelectTileSystem {
 
     fn run(&mut self, mut data: Self::SystemData) {
         if !data.run.0 { return; }
+
+        // Edit group action if necessary
+        let selected_tile = &mut *data.selected_tile;
+        if let (Some(action), Some(tile)) = (&mut selected_tile.1, &selected_tile.2) {
+            for (collider, button_action) in (&data.colliders, &data.button_actions).join() {
+                if collider.clicked() {
+                    *action = action.compose(&button_action.group_action(tile));
+                }
+            }
+        }
 
         // Only do something when the selection is modified
         if (&data.colliders, &data.tile_selects).join().all(|(c, _)| !c.clicked()) {
@@ -523,7 +558,8 @@ impl<'a> System<'a> for SelectTileSystem {
             if collider.clicked() {
                 found_selected = true;
                 data.selected_tile.0 = tile_select.index;
-                data.selected_tile.1 = Some(tile.0.clone());
+                data.selected_tile.1 = Some(tile_select.action.clone());
+                data.selected_tile.2 = Some(tile.0.clone());
             }
         }
 
@@ -730,11 +766,11 @@ impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
 pub trait BaseTileExt {
     fn render(&self) -> SvgElement;
 
-    fn create_hand_entity(&self, index: u32, world: &mut World, id_counter: &mut u64) -> Entity;
+    fn create_hand_entity(&self, index: u32, action: &BaseGAct, world: &mut World, id_counter: &mut u64) -> Entity;
 
     fn create_board_entity_common<'a>(&self, world: &'a mut World, id_counter: &mut u64) -> EntityBuilder<'a>;
 
-    fn create_to_place_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity;
+    fn create_to_place_entity(&self, action: &BaseGAct, world: &mut World, id_counter: &mut u64) -> Entity;
 
     fn create_on_board_entity(&self, board: &BaseBoard, loc: &BaseTLoc, world: &mut World, id_counter: &mut u64) -> Entity;
 }
@@ -747,16 +783,16 @@ for_each_tile! {
             match self { $($($p)*::$x(b) => b.render()),* }
         }
 
-        fn create_hand_entity(&self, index: u32, world: &mut World, id_counter: &mut u64) -> Entity {
+        fn create_hand_entity(&self, index: u32, action: &BaseGAct, world: &mut World, id_counter: &mut u64) -> Entity {
             match self { $($($p)*::$x(b) => {
-                let svg = self.render();
+                let svg = self.apply_action(action).render();
                 let wrapper = wrap_svg(&svg.dyn_into().unwrap(), 128);
                 wrapper.set_attribute("class", "tile-unselected").expect("Cannot set tile select class");
                 world.create_entity()
                     .with(TileLabel(self.clone()))
                     .with(Model::new(&wrapper, 0, &GameWorld::bottom_panel(), id_counter))
                     .with(Collider::new(&wrapper))
-                    .with(TileSelect::new(self.kind(), index))
+                    .with(TileSelect::new(self.kind(), index, action.clone()))
                     .build()
             }),* }
         }
@@ -768,9 +804,9 @@ for_each_tile! {
             }),* }
         }
 
-        fn create_to_place_entity(&self, world: &mut World, id_counter: &mut u64) -> Entity {
+        fn create_to_place_entity(&self, action: &BaseGAct, world: &mut World, id_counter: &mut u64) -> Entity {
             match self { $($($p)*::$x(b) => {
-                let svg = self.render();
+                let svg = self.apply_action(action).render();
                 self.create_board_entity_common(world, id_counter)
                     .with(Model::new(&svg, Model::ORDER_TILE_HOVER, &GameWorld::svg_root(), id_counter))
                     .with(TileToPlace)

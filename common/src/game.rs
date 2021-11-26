@@ -5,7 +5,7 @@ use enum_dispatch::enum_dispatch;
 use fnv::FnvHashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{board::{Board, Port, RectangleBoard, TLoc}, game_state::GameState, tile::{Kind, RegularTile, Tile}};
+use crate::{board::{Board, Port, RectangleBoard, TLoc}, game_state::GameState, tile::{GAct, Kind, RegularTile, Tile}};
 use crate::game_state::BaseGameState;
 use crate::board::BaseBoard;
 use crate::WrapBase;
@@ -74,9 +74,10 @@ pub trait Game: Clone + Debug + Serialize {
     type TLoc: TLoc;
     type Port: Port;
     type Kind: Kind;
+    type GAct: GAct;
     type TileConfig: Clone + Debug;
     type Board: Board<TLoc = Self::TLoc, Port = Self::Port, Kind = Self::Kind, TileConfig = Self::TileConfig>;
-    type Tile: Tile<Kind = Self::Kind, TileConfig = Self::TileConfig>;
+    type Tile: Tile<Kind = Self::Kind, GAct = Self::GAct, TileConfig = Self::TileConfig>;
 
     /// The game's board
     fn board(&self) -> &Self::Board;
@@ -133,6 +134,7 @@ where
     type TLoc = B::TLoc;
     type Port = B::Port;
     type Kind = B::Kind;
+    type GAct = T::GAct;
     type TileConfig = B::TileConfig;
     type Board = B;
     type Tile = T;

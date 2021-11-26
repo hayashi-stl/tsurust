@@ -1,6 +1,7 @@
 use std::{collections::HashSet, fmt::Debug};
 use std::hash::Hash;
 use enum_dispatch::enum_dispatch;
+use getset::CopyGetters;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +20,95 @@ impl Kind for () {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum BaseKind {
     Unit(())
+}
+
+/// A group action on a tile.
+pub trait GAct: Clone + Debug + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
+    /// Compose this group action with another
+    fn compose(&self, other: &Self) -> Self;
+
+    wrap_functions!(BaseGAct);
+}
+
+/// Action on a cyclic group of size `size`
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, CopyGetters)]
+pub struct CycleGAct {
+    #[getset(get_copy = "pub")]
+    rotation: i32,
+    #[getset(get_copy = "pub")]
+    size: u32,
+}
+
+impl GAct for CycleGAct {
+    fn compose(&self, other: &Self) -> Self {
+        assert_eq!(self.size, other.size, "Cycle group sizes must equal");
+        CycleGAct {
+            rotation: (self.rotation + other.rotation).rem_euclid(self.size as i32),
+            size: self.size
+        }
+    }
+
+    impl_wrap_functions!(() BaseGAct, Cycle);
+}
+
+/// Action on a dihedral group on a cycle of size `size`
+/// (possible reflection across an axis across element 0 of the cycle, followed by rotation)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, CopyGetters)]
+pub struct DihedralGAct {
+    #[getset(get_copy = "pub")]
+    rotation: i32,
+    #[getset(get_copy = "pub")]
+    reflected: bool,
+    #[getset(get_copy = "pub")]
+    size: u32,
+}
+
+impl GAct for DihedralGAct {
+    fn compose(&self, other: &Self) -> Self {
+        assert_eq!(self.size, other.size, "Cycle group sizes must equal");
+        DihedralGAct {
+            rotation: (self.rotation * if other.reflected {-1} else {1} + other.rotation).rem_euclid(self.size as i32),
+            reflected: self.reflected != other.reflected,
+            size: self.size,
+        }
+    }
+
+    impl_wrap_functions!(() BaseGAct, Dihedral);
+}
+
+#[macro_export]
+macro_rules! for_each_gact {
+    (internal ($dollar:tt) $path:ident $name:ident $ty:ident => $($body:tt)*) => {
+        macro_rules! __mac {
+            ($dollar(($dollar ($dollar $path:tt)*) :: $dollar $name:ident: $dollar $ty:ty,)*) => {$($body)*}
+        }
+        __mac! {
+            ($crate::tile::BaseGAct)::Cycle: $crate::tile::CycleGAct,
+            ($crate::tile::BaseGAct)::Dihedral: $crate::tile::DihedralGAct,
+        }
+    };
+
+    ($path:ident::$name:ident, $ty:ident => $($body:tt)*) => {
+        $crate::for_each_gact! {
+            internal ($) $path $name $ty => $($body)*
+        }
+    };
+}
+
+for_each_gact! {
+    p::x, t =>
+
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+    pub enum BaseGAct {
+        $($x($t)),*
+    }
+
+    impl BaseGAct {
+        /// Compose this group action with another
+        pub fn compose(&self, other: &Self) -> Self {
+            match self { $($($p)*::$x(s) => s.compose(<$t>::unwrap_base_ref(other)).wrap_base()),* }
+        }
+    }
 }
 
 #[macro_export]
@@ -52,9 +142,24 @@ for_each_tile! {
             match self { $($($p)*::$x(s) => s.kind().clone().wrap_base()),* }
         }
 
-        /// Rotate the tile `num_times` times counterclockwise.
+        /// Rotate the tile `num_times` times clockwise.
         pub fn rotate(&self, num_times: i32) -> Self {
             match self { $($($p)*::$x(s) => s.rotate(num_times).wrap_base()),* }
+        }
+
+        /// Generate the identity group action.
+        pub fn identity_action(&self) -> BaseGAct {
+            match self { $($($p)*::$x(s) => s.identity_action().wrap_base()),* }
+        }
+
+        /// Generate a rotation group action that rotates `num_times` times clockwise.
+        pub fn rotation_action(&self, num_times: i32) -> BaseGAct {
+            match self { $($($p)*::$x(s) => s.rotation_action(num_times).wrap_base()),* }
+        }
+
+        /// Apply a group action to this tile.
+        pub fn apply_action(&self, action: &BaseGAct) -> Self {
+            match self { $($($p)*::$x(s) => s.apply_action(GAct::unwrap_base_ref(action)).wrap_base()),* }
         }
     }
 
@@ -64,6 +169,7 @@ for_each_tile! {
 /// A tile in the path game, parameterized by kind
 pub trait Tile: Clone + Debug + Eq + Ord + Hash + Serialize + for<'a> Deserialize<'a> {
     type Kind: Kind;
+    type GAct: GAct;
     type TileConfig: Clone + Debug;
 
     /// All tiles of this type, in no particular order, but a deterministic order.
@@ -103,8 +209,17 @@ pub trait Tile: Clone + Debug + Eq + Ord + Hash + Serialize + for<'a> Deserializ
     /// The number of ports on this tile
     fn num_ports(&self) -> u32;
 
-    /// Rotate the tile `num_times` times counterclockwise.
+    /// Rotate the tile `num_times` times clockwise.
     fn rotate(&self, num_times: i32) -> Self;
+
+    /// Generate the identity group action.
+    fn identity_action(&self) -> Self::GAct;
+
+    /// Generate a rotation group action that rotates `num_times` times clockwise.
+    fn rotation_action(&self, num_times: i32) -> Self::GAct;
+
+    /// Apply a group action to this tile.
+    fn apply_action(&self, action: &Self::GAct) -> Self;
 
     /// The output port of some input port on the tile
     fn output(&self, input: u32) -> u32;
@@ -119,7 +234,8 @@ pub trait Tile: Clone + Debug + Eq + Ord + Hash + Serialize + for<'a> Deserializ
     fn set_visible(&mut self, visible: bool);
 }
 
-/// A regular-polygon-shaped tile with `EDGES` edges
+/// A regular-polygon-shaped tile with `EDGES` edges.
+/// Parameterized on number of edges since boards can't support arbitary regular polygons.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct RegularTile<const EDGES: u32> {
     connections: Vec<u32>,
@@ -138,6 +254,7 @@ impl<const EDGES: u32> RegularTile<EDGES> {
 
 impl<const EDGES: u32> Tile for RegularTile<EDGES> {
     type Kind = ();
+    type GAct = CycleGAct;
     type TileConfig = PortsPerEdgeTileConfig;
 
     fn all_including_rotations(ports_per_edge: Self::TileConfig) -> Vec<Self> where Self: Sized {
@@ -189,6 +306,24 @@ impl<const EDGES: u32> Tile for RegularTile<EDGES> {
 
     fn num_ports(&self) -> u32 {
         self.ports_per_edge() * EDGES
+    }
+
+    fn identity_action(&self) -> Self::GAct {
+        Self::GAct {
+            rotation: 0,
+            size: EDGES
+        }
+    }
+
+    fn rotation_action(&self, num_times: i32) -> Self::GAct {
+        Self::GAct {
+            rotation: num_times.rem_euclid(EDGES as i32),
+            size: EDGES
+        }
+    }
+
+    fn apply_action(&self, action: &Self::GAct) -> Self {
+        self.rotate(action.rotation)
     }
 
     fn rotate(&self, num_times: i32) -> Self {

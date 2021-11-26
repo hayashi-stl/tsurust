@@ -1,4 +1,4 @@
-use common::{board::{BasePort, BaseTLoc}, game_state::BaseGameState, message::{Request, Response}, tile::BaseKind};
+use common::{board::{BasePort, BaseTLoc}, game_state::BaseGameState, message::{Request, Response}, tile::{BaseGAct, BaseKind}};
 use specs::prelude::*;
 use enum_dispatch::enum_dispatch;
 use common::game::BaseGame;
@@ -61,8 +61,8 @@ impl AppStateT for Game {
             Response::PlacedToken{ player, port } =>
                 self.set_token_position(world, *player, port),
 
-            Response::PlacedTile{ player, kind, index, loc } =>
-                self.take_turn_placing_tile(world, *player, kind, *index, loc),
+            Response::PlacedTile{ player, kind, index, action, loc } =>
+                self.take_turn_placing_tile(world, *player, kind, *index, action, loc),
 
             _ => {}
         }
@@ -99,9 +99,8 @@ impl Game {
         }
     }
 
-    pub fn take_turn_placing_tile(&mut self, world: &mut GameWorld, player: u32, kind: &BaseKind, index: u32, loc: &BaseTLoc) {
-        let delta = self.state.take_turn_placing_tile(&self.game, kind, index, loc);
-        console_log!("Change: {:?}", delta);
+    pub fn take_turn_placing_tile(&mut self, world: &mut GameWorld, player: u32, kind: &BaseKind, index: u32, action: &BaseGAct, loc: &BaseTLoc) {
+        let delta = self.state.take_turn_placing_tile(&self.game, kind, index, action, loc);
 
         let board_tile_entity = delta.tile_placed().1.create_on_board_entity(
             &self.game.board(),
@@ -147,7 +146,12 @@ impl Game {
 
         for (player, index, tile) in delta.drawn_tiles() {
             if *player == self.state.looker_expect() {
-                let entity = tile.create_hand_entity(*index, &mut world.world, &mut world.id_counter);
+                let entity = tile.create_hand_entity(
+                    *index, 
+                    &tile.identity_action(),
+                    &mut world.world, 
+                    &mut world.id_counter
+                );
                 self.tile_hand_entities.push(entity);
             }
         }
@@ -166,7 +170,7 @@ pub type State = AppState;
 pub mod gameplay {
     use specs::{Entity, WorldExt};
     use enum_dispatch::enum_dispatch;
-    use common::{message::{Request, Response}};
+    use common::{message::{Request, Response}, tile::BaseGAct};
 
     use crate::{console_log, game::{GameWorld, app}, render::{BaseBoardExt, BaseTileExt, PlacedPort, PlacedTLoc, RunPlaceTileSystem, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace}};
 
@@ -195,6 +199,7 @@ pub mod gameplay {
         pub(crate) locs: Vec<Entity>,
         pub(crate) tile_entity: Option<Entity>,
         pub(crate) tile_index: u32,
+        pub(crate) tile_action: Option<BaseGAct>,
     }
 
     /// Waiting for the server to check the validity of the tile placement
@@ -203,6 +208,7 @@ pub mod gameplay {
         pub(crate) locs: Vec<Entity>,
         pub(crate) tile_entity: Option<Entity>,
         pub(crate) tile_index: u32,
+        pub(crate) tile_action: Option<BaseGAct>,
     }
 
     #[enum_dispatch]
@@ -285,6 +291,7 @@ pub mod gameplay {
                     locs,
                     tile_entity: None,
                     tile_index: 0,
+                    tile_action: None,
                 }.into()
             } else {
                 self.into()
@@ -303,13 +310,19 @@ pub mod gameplay {
                 );
 
                 self.tile_index = selected_tile.0;
-                if selected_tile.1.as_ref() != tile_label {
+                if selected_tile.2.as_ref() != tile_label || selected_tile.1.as_ref() != self.tile_action.as_ref() {
+                    self.tile_action = selected_tile.1.clone();
+
                     // Replace tile to place
-                    let tile = selected_tile.1.clone();
+                    let tile = selected_tile.2.clone();
                     std::mem::drop((selected_tile, storage));
                     self.tile_entity.map(|entity| world.world.delete_entity(entity).ok());
                     if let Some(tile) = tile {
-                        self.tile_entity = Some(tile.create_to_place_entity(&mut world.world, &mut world.id_counter));
+                        self.tile_entity = Some(tile.create_to_place_entity(
+                            &self.tile_action.clone().expect("Group action should exist"),
+                            &mut world.world,
+                            &mut world.id_counter,
+                        ));
                     }
                 }
             }
@@ -328,13 +341,15 @@ pub mod gameplay {
                     player: app.state.looker_expect(),
                     kind,
                     index: self.tile_index,
+                    action: self.tile_action.clone().expect("Group action should exist"),
                     loc
                 });
 
                 WaitPlaceTileCheck {
                     locs: self.locs,
                     tile_entity: self.tile_entity,
-                    tile_index: self.tile_index
+                    tile_index: self.tile_index,
+                    tile_action: self.tile_action,
                 }.into()
             } else {
                 self.into()
@@ -353,9 +368,10 @@ pub mod gameplay {
 
         fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
             match response {
-                Response::PlacedTile{ player, kind, index, loc } => if player == app.state.looker_expect() {
+                Response::PlacedTile{ player, .. } => if player == app.state.looker_expect() {
                     self.tile_entity.map(|e| world.world.delete_entity(e).expect("Entity was deleted too early"));
                     world.world.delete_entities(&self.locs).expect("Entity was deleted too early");
+                    world.world.get_mut::<SelectedTile>().expect("Missing SelectedTile").2 = None;
                     WaitTurn.into()
                 } else {
                     self.into()
@@ -365,7 +381,8 @@ pub mod gameplay {
                     PlaceTile {
                         locs: self.locs,
                         tile_entity: self.tile_entity,
-                        tile_index: self.tile_index
+                        tile_index: self.tile_index,
+                        tile_action: self.tile_action,
                     }.into()
                 },
 

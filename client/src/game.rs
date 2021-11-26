@@ -1,13 +1,22 @@
 use std::sync::mpsc::{self, Receiver};
 
-use common::{board::BasePort, game::{BaseGame, GenericGame}, game_state::BaseGameState, math::{Pt2, Vec2}, message::{Request, Response}};
+use common::{board::BasePort, game::{BaseGame, GenericGame}, game_state::BaseGameState, math::{Pt2, Vec2}, message::{Request, Response}, tile::Tile};
 use itertools::Itertools;
 use specs::{Builder, Dispatcher, DispatcherBuilder, Entity, World, WorldExt};
 use wasm_bindgen::JsCast;
 use web_sys::{Element, SvgElement};
 use enum_dispatch::enum_dispatch;
 
-use crate::{console_log, document, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt, BoardInput, Collider, ColliderInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem}};
+use crate::{
+    console_log,
+    document,
+    render::{
+        self, BaseBoardExt, BaseGameExt, BaseTileExt, BoardInput, ButtonAction, Collider,
+        ColliderInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc,
+        PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem,
+        SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot,
+        TokenToPlace, Transform, TransformSystem
+    }};
 
 mod app;
 use app::{gameplay, AppStateT};
@@ -36,14 +45,25 @@ impl GameWorld {
         world.register::<TileLabel>();
         world.register::<TLocLabel>();
         world.register::<TileSelect>();
+        world.register::<ButtonAction>();
         world.insert(BoardInput::new(&document().get_element_by_id("svg_root").expect("Missing main panel svg")
             .dyn_into().expect("Not an <svg> element")));
         world.insert(RunPlaceTokenSystem(true));
         world.insert(RunSelectTileSystem(true));
         world.insert(RunPlaceTileSystem(true));
         world.insert(PlacedPort(None));
-        world.insert(SelectedTile(0, None));
+        world.insert(SelectedTile(0, None, None));
         world.insert(PlacedTLoc(None));
+
+        world.create_entity()
+            .with(Collider::new(&document().get_element_by_id("rotate_ccw").expect("Missing rotate ccw button")))
+            .with(ButtonAction::Rotation{ num_times: -1 })
+            .build();
+
+        world.create_entity()
+            .with(Collider::new(&document().get_element_by_id("rotate_cw").expect("Missing rotate cw button")))
+            .with(ButtonAction::Rotation{ num_times: 1 })
+            .build();
 
         let dispatcher = DispatcherBuilder::new()
             .with(SvgOrderSystem, "svg_order", &[])
@@ -121,7 +141,12 @@ impl GameWorld {
             .flat_map(|(kind, tiles)| {
                 tiles.into_iter().enumerate().map(move |(index, tile)| (kind.clone(), index as u32, tile))
             })
-            .map(|(_, index, tile)| tile.create_hand_entity(index, &mut self.world, &mut self.id_counter))
+            .map(|(_, index, tile)| tile.create_hand_entity(
+                index,
+                &tile.identity_action(),
+                &mut self.world,
+                &mut self.id_counter,
+            ))
             .collect_vec();
 
         let mut game_state = app::Game {
