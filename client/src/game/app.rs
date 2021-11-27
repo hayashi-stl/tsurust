@@ -170,14 +170,9 @@ pub type State = AppState;
 pub mod gameplay {
     use specs::{Entity, WorldExt};
     use enum_dispatch::enum_dispatch;
-    use common::{message::{Request, Response}, tile::BaseGAct};
+    use common::{math::Pt2, message::{Request, Response}, tile::BaseGAct};
 
-    use crate::{
-        console_log,
-        game::{GameWorld, app},
-        render::{BaseBoardExt, BaseTileExt},
-        ecs::{PlacedPort, PlacedTLoc, RunPlaceTileSystem, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace}
-    };
+    use crate::{console_log, ecs::{PlacedPort, PlacedTLoc, RunPlaceTileSystem, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace, Transform}, game::{GameWorld, app}, render::{BaseBoardExt, BaseTileExt}};
 
     #[derive(Debug)]
     pub struct PlaceToken {
@@ -321,10 +316,19 @@ pub mod gameplay {
                     // Replace tile to place
                     let tile = selected_tile.2.clone();
                     std::mem::drop((selected_tile, storage));
-                    self.tile_entity.map(|entity| world.world.delete_entity(entity).ok());
+                    // Recover transform to apply it to the new tile
+                    let transform = self.tile_entity.and_then(|entity| {
+                        let transform = world.world.read_component::<Transform>()
+                            .get(entity)
+                            .cloned();
+                        world.world.delete_entity(entity).ok();
+                        transform
+                    }).unwrap_or(Transform::new(Pt2::origin()));
+
                     if let Some(tile) = tile {
                         self.tile_entity = Some(tile.create_to_place_entity(
                             &self.tile_action.clone().expect("Group action should exist"),
+                            transform,
                             &mut world.world,
                             &mut world.id_counter,
                         ));

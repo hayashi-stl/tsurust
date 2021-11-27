@@ -19,6 +19,7 @@ pub struct GameWorld {
     world: World,
     id_counter: u64,
     dispatcher: Dispatcher<'static, 'static>,
+    render_dispatcher: Dispatcher<'static, 'static>,
 }
 
 impl GameWorld {
@@ -61,13 +62,16 @@ impl GameWorld {
             .build();
 
         let dispatcher = DispatcherBuilder::new()
-            .with(SvgOrderSystem, "svg_order", &[])
             .with(ColliderInputSystem, "collider_input", &[])
             .with(KeyboardInputSystem, "keyboard_input", &[])
             .with(PlaceTokenSystem, "place_token", &["collider_input", "keyboard_input"])
             .with(PlaceTileSystem, "place_tile", &["collider_input", "keyboard_input"])
-            .with(TransformSystem::new(&world), "transform", &["place_token", "place_tile"])
             .with(SelectTileSystem, "select_tile", &["collider_input", "keyboard_input"])
+            .build();
+
+        let render_dispatcher = DispatcherBuilder::new()
+            .with(SvgOrderSystem, "svg_order", &[])
+            .with(TransformSystem::new(&world), "transform", &[])
             .build();
 
         Self {
@@ -75,6 +79,7 @@ impl GameWorld {
             world,
             id_counter: 0,
             dispatcher,
+            render_dispatcher,
         }
     }
 
@@ -173,6 +178,8 @@ impl GameWorld {
         self.state = Some(self.state.take()
             .expect("State is missing")
             .update(self, &mut requests));
+
+        self.render_dispatcher.dispatch(&mut self.world);
 
         requests
     }

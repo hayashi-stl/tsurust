@@ -246,7 +246,7 @@ pub trait BaseTileExt {
 
     fn create_board_entity_common<'a>(&self, world: &'a mut World, id_counter: &mut u64) -> EntityBuilder<'a>;
 
-    fn create_to_place_entity(&self, action: &BaseGAct, world: &mut World, id_counter: &mut u64) -> Entity;
+    fn create_to_place_entity(&self, action: &BaseGAct, transform: Transform, world: &mut World, id_counter: &mut u64) -> Entity;
 
     fn create_on_board_entity(&self, board: &BaseBoard, loc: &BaseTLoc, world: &mut World, id_counter: &mut u64) -> Entity;
 }
@@ -280,13 +280,13 @@ for_each_tile! {
             }),* }
         }
 
-        fn create_to_place_entity(&self, action: &BaseGAct, world: &mut World, id_counter: &mut u64) -> Entity {
+        fn create_to_place_entity(&self, action: &BaseGAct, transform: Transform, world: &mut World, id_counter: &mut u64) -> Entity {
             match self { $($($p)*::$x(b) => {
                 let svg = self.apply_action(action).render();
                 self.create_board_entity_common(world, id_counter)
                     .with(Model::new(&svg, Model::ORDER_TILE_HOVER, &GameWorld::svg_root(), id_counter))
                     .with(TileToPlace)
-                    .with(Transform::new(Pt2::origin()))
+                    .with(transform)
                     .build()
             }),* }
         }

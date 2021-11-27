@@ -20,7 +20,7 @@ use wasm_bindgen::{JsCast, prelude::Closure};
 use web_sys::{DomParser, Element, KeyboardEvent, MouseEvent, SupportedType, SvgElement, SvgGraphicsElement, SvgMatrix, SvgsvgElement};
 
 use crate::game::GameWorld;
-use crate::render::SvgMatrixExt;
+use crate::render::{BaseTileExt, SvgMatrixExt};
 use crate::{SVG_NS, add_event_listener, console_log, document};
 
 /// Transformation component. Sets transform of other objects
@@ -586,6 +586,22 @@ impl<'a> System<'a> for SelectTileSystem {
             }
         }
 
+        for (model, tile_select, tile) in (&data.models, &mut data.tile_selects, &data.tiles).join() {
+            let elem = document().get_element_by_id(&model.id).expect("Missing model element");
+
+            // Replace rendered tile if necessary
+            if tile_select.selected {
+                if let Some(action) = data.selected_tile.1.clone() {
+                    if action != tile_select.action {
+                        let old = elem.first_child().expect("Expected a tile svg");
+                        let new = tile.0.apply_action(&action).render();
+                        elem.replace_child(&new, &old).expect("Failed to replace tile svg");
+                        tile_select.action = action;
+                    }
+                }
+            }
+        }
+
         // Only do something when the selection is modified
         if (&data.colliders, &data.tile_selects).join().all(|(c, _)| !c.clicked()) {
             return;
@@ -609,7 +625,7 @@ impl<'a> System<'a> for SelectTileSystem {
         }
 
         // Update selection visualization
-        for (model, tile_select) in (&data.models, &data.tile_selects).join() {
+        for (model, tile_select, tile) in (&data.models, &mut data.tile_selects, &data.tiles).join() {
             let elem = document().get_element_by_id(&model.id).expect("Missing model element");
             elem.set_attribute(
                 "class", 
