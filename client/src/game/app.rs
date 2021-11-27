@@ -3,7 +3,7 @@ use specs::prelude::*;
 use enum_dispatch::enum_dispatch;
 use common::game::BaseGame;
 
-use crate::{console_log, render::{self, BaseBoardExt, BaseTileExt, Model, TileSelect, Transform}};
+use crate::{console_log, render::{self, BaseBoardExt, BaseTileExt}, ecs::{Model, TileSelect, Transform}};
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
@@ -172,7 +172,12 @@ pub mod gameplay {
     use enum_dispatch::enum_dispatch;
     use common::{message::{Request, Response}, tile::BaseGAct};
 
-    use crate::{console_log, game::{GameWorld, app}, render::{BaseBoardExt, BaseTileExt, PlacedPort, PlacedTLoc, RunPlaceTileSystem, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace}};
+    use crate::{
+        console_log,
+        game::{GameWorld, app},
+        render::{BaseBoardExt, BaseTileExt},
+        ecs::{PlacedPort, PlacedTLoc, RunPlaceTileSystem, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace}
+    };
 
     #[derive(Debug)]
     pub struct PlaceToken {

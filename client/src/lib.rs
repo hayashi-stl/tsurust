@@ -1,6 +1,7 @@
 pub mod processor;
 pub mod render;
 pub mod game;
+pub mod ecs;
 
 use common::message::Request;
 use common::message::Response;

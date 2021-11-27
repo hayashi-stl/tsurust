@@ -7,16 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{Element, SvgElement};
 use enum_dispatch::enum_dispatch;
 
-use crate::{
-    console_log,
-    document,
-    render::{
-        self, BaseBoardExt, BaseGameExt, BaseTileExt, BoardInput, ButtonAction, Collider,
-        ColliderInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc,
-        PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem,
-        SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot,
-        TokenToPlace, Transform, TransformSystem
-    }};
+use crate::{console_log, document, ecs::{BoardInput, ButtonAction, Collider, ColliderInputSystem, KeyLabel, KeyboardInput, KeyboardInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem}, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt}};
 
 mod app;
 use app::{gameplay, AppStateT};
@@ -46,8 +37,10 @@ impl GameWorld {
         world.register::<TLocLabel>();
         world.register::<TileSelect>();
         world.register::<ButtonAction>();
+        world.register::<KeyLabel>();
         world.insert(BoardInput::new(&document().get_element_by_id("svg_root").expect("Missing main panel svg")
             .dyn_into().expect("Not an <svg> element")));
+        world.insert(KeyboardInput::new(&document().document_element().expect("Missing root element. What?!")));
         world.insert(RunPlaceTokenSystem(true));
         world.insert(RunSelectTileSystem(true));
         world.insert(RunPlaceTileSystem(true));
@@ -58,20 +51,23 @@ impl GameWorld {
         world.create_entity()
             .with(Collider::new(&document().get_element_by_id("rotate_ccw").expect("Missing rotate ccw button")))
             .with(ButtonAction::Rotation{ num_times: -1 })
+            .with(KeyLabel("KeyE".to_owned()))
             .build();
 
         world.create_entity()
             .with(Collider::new(&document().get_element_by_id("rotate_cw").expect("Missing rotate cw button")))
             .with(ButtonAction::Rotation{ num_times: 1 })
+            .with(KeyLabel("KeyR".to_owned()))
             .build();
 
         let dispatcher = DispatcherBuilder::new()
             .with(SvgOrderSystem, "svg_order", &[])
             .with(ColliderInputSystem, "collider_input", &[])
-            .with(PlaceTokenSystem, "place_token", &["collider_input"])
-            .with(PlaceTileSystem, "place_tile", &["collider_input"])
+            .with(KeyboardInputSystem, "keyboard_input", &[])
+            .with(PlaceTokenSystem, "place_token", &["collider_input", "keyboard_input"])
+            .with(PlaceTileSystem, "place_tile", &["collider_input", "keyboard_input"])
             .with(TransformSystem::new(&world), "transform", &["place_token", "place_tile"])
-            .with(SelectTileSystem, "select_tile", &["collider_input"])
+            .with(SelectTileSystem, "select_tile", &["collider_input", "keyboard_input"])
             .build();
 
         Self {
