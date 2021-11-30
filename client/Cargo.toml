@@ -32,6 +32,7 @@ specs = { version = "0.17.0", default-features = false, features = ["shred-deriv
 enum_dispatch = "0.3"
 common = { path = "../common" }
 getset = "0.1"
+format_xml = "0.2"
 
 # `wee_alloc` is a tiny allocator for wasm that is only ~1K in code size
 # compared to the default allocator's ~10K. However, it is slower than the default
@@ -60,6 +61,8 @@ features = [
     "Window",
     "EventTarget",
     "HtmlInputElement",
+    "HtmlTemplateElement",
+    "DocumentFragment",
     "SvgElement",
     "SvgGraphicsElement",
     "SvgsvgElement",

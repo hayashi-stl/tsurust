@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::iter;
 
 use async_std::sync::{Mutex, MutexGuard};
-use common::message::{Request, Response};
+use common::{message::{Request, Response}, player_state::Looker};
 use fnv::FnvHashMap;
 use itertools::Itertools;
 use log::*;
@@ -14,11 +14,21 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
     match req {
         Request::SetUsername{ name } => {
             state.set_username(requester, name.clone());
-            let added = state.game_mut().add_player(requester, name);
+            let added = state.game_mut().add_player(requester, name.clone());
+            if !added {
+                state.game_mut().add_spectator(requester, name);
+            }
+
             let usernames = state.game().players().iter().map(|player| player.username().clone())
                 .collect_vec();
-            state.peers().iter().flat_map(|(addr, peer)| {
-                (added || requester == *addr).then(|| (*addr, vec![Response::Usernames{ names: usernames.clone() }]))
+            state.peers().iter().map(|(addr, peer)| {
+                (*addr, vec![
+                    Some(Response::Usernames{ names: usernames.clone() }),
+                    (!added && state.game().started()).then(|| Response::State {
+                        game: state.game().game().clone(),
+                        state: state.game().state().as_ref().expect("Game should have started").visible_state(Looker::Spectator)
+                    })
+                ].into_iter().flatten().collect())
             }).collect()
         },
 
@@ -33,18 +43,27 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
                     state.peers().iter().map(|(addr, peer)| {
                         (*addr, vec![Response::Usernames{ names: usernames.clone() }])
                     }).collect()
-                } else { FnvHashMap::default() }
+                } else {
+                    state.game_mut().remove_spectator(addr);
+                    FnvHashMap::default()
+                }
             }
         },
 
         Request::StartGame => {
+            let players_spectators = state.game().players_and_spectators().cloned().collect_vec();
             if !state.game().started() {
                 state.game_mut().start();
                 state.peers().iter().map(|(addr, _)| {(*addr,
-                    if let Some(index) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                    if let Some(index) = players_spectators.iter().position(|p| p.addr() == addr) { vec![
                         Response::State {
                             game: state.game().game().clone(),
-                            state: state.game().state().as_ref().expect("Game should have started").visible_state(index as u32)
+                            state: state.game().state().as_ref().expect("Game should have started")
+                                .visible_state(if (index as u32) < state.game().num_players() {
+                                    Looker::Player(index as u32)
+                                } else {
+                                    Looker::Spectator
+                                })
                         }
                     ]} else { vec![] }
                 )}).collect()
@@ -61,7 +80,7 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
                     let turn_player = game_state.turn_player();
 
                     state.peers().iter().map(|(addr, _)| {(*addr,
-                        if let Some(index) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                        if let Some(index) = state.game().players_and_spectators().position(|p| p.addr() == addr) { vec![
                             Some(Response::PlacedToken { player, port: port.clone() }),
                             all_placed.then(|| Response::AllPlacedTokens),
                             (all_placed && turn_player == index as u32).then(|| Response::YourTurn),
@@ -79,13 +98,14 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
         Request::PlaceTile{ player, kind, index, action, loc } => {
             if let (game, Some(game_state)) = state.game_mut().game_and_state_mut() {
                 if game_state.can_place_tile(game, player, &kind, index, &action, &loc) {
-                    game_state.take_turn_placing_tile(game, &kind, index, &action, &loc);
+                    let result = game_state.take_turn_placing_tile(game, &kind, index, &action, &loc);
                     let turn_player = game_state.turn_player();
+                    let game_over = result.winners().len() > 0;
 
                     state.peers().iter().map(|(addr, _)| {(*addr,
-                        if let Some(i) = state.game().players().iter().position(|p| p.addr() == addr) { vec![
+                        if let Some(i) = state.game().players_and_spectators().position(|p| p.addr() == addr) { vec![
                             Some(Response::PlacedTile { player, kind: kind.clone(), index, action: action.clone(), loc: loc.clone() }),
-                            (turn_player == i as u32).then(|| Response::YourTurn),
+                            (turn_player == i as u32 && !game_over).then(|| Response::YourTurn),
                         ].into_iter().flatten().collect()} else { vec![] }
                     )}).collect()
                 } else {

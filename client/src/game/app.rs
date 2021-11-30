@@ -1,20 +1,27 @@
-use common::{board::{BasePort, BaseTLoc}, game_state::BaseGameState, message::{Request, Response}, tile::{BaseGAct, BaseKind}};
+use common::{board::{BasePort, BaseTLoc}, game_state::BaseGameState, message::{Request, Response}, player_state::{Looker}, tile::{BaseGAct, BaseKind, BaseTile}};
+use format_xml::{spaced, xml};
+use itertools::Itertools;
 use specs::prelude::*;
 use enum_dispatch::enum_dispatch;
 use common::game::BaseGame;
+use wasm_bindgen::JsCast;
+use web_sys::{Element, HtmlTemplateElement};
 
-use crate::{console_log, render::{self, BaseBoardExt, BaseTileExt}, ecs::{Model, TileSelect, Transform}};
+use crate::{SVG_NS, console_log, document, ecs::{Model, TileSelect, Transform}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS}};
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
 
-#[derive(Debug)]
-pub struct EnterUsername;
+#[derive(Debug, Default)]
+pub struct EnterUsername {
+    usernames: Vec<String>,
+}
 
 #[derive(Debug)]
 pub struct Game {
     pub(crate) game: BaseGame,
     pub(crate) state: BaseGameState,
+    pub(crate) player_usernames: Vec<String>,
     pub(crate) board_entity: Entity,
     /// An token entity for each player.
     /// None if the player didn't place their token yet
@@ -39,11 +46,20 @@ impl AppStateT for EnterUsername {
         self.into()
     }
 
-    fn handle_response(self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
-        if let Response::State{ game, state } = response {
-            world.set_game(game, state).into()
-        } else {
-            self.into()
+    fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
+        match response {
+            Response::State{ game, state } => world.set_game(
+                game,
+                state,
+                std::mem::take(&mut self.usernames),
+            ).into(),
+
+            Response::Usernames{ names } => {
+                self.usernames = names;
+                self.into()
+            }
+
+            _ => self.into()
         }
     }
 }
@@ -76,11 +92,10 @@ impl AppStateT for Game {
 }
 
 impl Game {
-    /// Set the position of some player's token.
+    /// Moves a player token to some location.
     /// This does not care about `self.gameplay_state` and can be called with it being `None`.
-    pub fn set_token_position(&mut self, world: &mut GameWorld, player: u32, port: &BasePort) {
+    pub fn move_token(&mut self, world: &mut GameWorld, player: u32, port: &BasePort) {
         let position = self.game.board().port_position(port);
-        self.state.place_player(player, port);
 
         if let Some(token) = self.token_entities[player as usize] {
             world.world.write_component::<Transform>()
@@ -91,7 +106,7 @@ impl Game {
             self.token_entities[player as usize] = Some(world.world.create_entity()
                 .with(Transform::new(position))
                 .with(Model::new(
-                    &render::render_token(player, self.state.num_players(), &mut world.id_counter),
+                    &render::parse_svg(&render::render_token(player, self.state.num_players(), &mut world.id_counter)),
                     Model::ORDER_PLAYER_TOKEN, 
                     &GameWorld::svg_root(), &mut world.id_counter
                 ))
@@ -99,62 +114,122 @@ impl Game {
         }
     }
 
-    pub fn take_turn_placing_tile(&mut self, world: &mut GameWorld, player: u32, kind: &BaseKind, index: u32, action: &BaseGAct, loc: &BaseTLoc) {
-        let delta = self.state.take_turn_placing_tile(&self.game, kind, index, action, loc);
+    /// Set the position of some player's token, editing the state.
+    /// This does not care about `self.gameplay_state` and can be called with it being `None`.
+    pub fn set_token_position(&mut self, world: &mut GameWorld, player: u32, port: &BasePort) {
+        self.state.place_player(player, port);
+        self.display_state(world);
+        self.move_token(world, player, port);
+    }
 
-        let board_tile_entity = delta.tile_placed().1.create_on_board_entity(
+    /// Renders a tile at some location.
+    /// This does not care about `self.gameplay_state` and can be called with it being `None`.
+    pub fn place_tile(&mut self, world: &mut GameWorld, tile: &BaseTile, loc: &BaseTLoc) {
+        let board_tile_entity = tile.create_on_board_entity(
             &self.game.board(),
-            &delta.tile_loc(),
+            &loc,
             &mut world.world,
             &mut world.id_counter,
         );
         self.board_tile_entities.push(board_tile_entity);
+    }
+
+    pub fn take_turn_placing_tile(&mut self, world: &mut GameWorld, player: u32, kind: &BaseKind, index: u32, action: &BaseGAct, loc: &BaseTLoc) {
+        let delta = self.state.take_turn_placing_tile(&self.game, kind, index, action, loc);
+        self.display_state(world);
+
+        self.place_tile(world, &delta.tile_placed().1, loc);
 
         for (player, port) in delta.player_ports().iter().enumerate() {
             self.set_token_position(world, player as u32, port);
         }
 
-        if delta.dead_players().contains(&self.state.looker_expect()) {
-            world.world.delete_entities(&self.tile_hand_entities).expect("Entities deleted too early");
-            self.tile_hand_entities.clear();
-        }
+        if let Looker::Player(looker) = self.state.looker() {
+            // Wipe tiles if dead
+            if delta.dead_players().contains(&looker) {
+                world.world.delete_entities(&self.tile_hand_entities).expect("Entities deleted too early");
+                self.tile_hand_entities.clear();
+            }
 
-        // Delete placed tile if necessary
-        else if delta.tile_placer() == self.state.looker_expect() {
-            let storage = world.world.read_component::<TileSelect>();
-            let (i, kind, index, entity) = self.tile_hand_entities.iter()
-                .enumerate()
-                .find_map(|(i, entity)| {
-                    let tile_select = storage.get(*entity).expect("Hand tile is missing TileSelect");
-                    (tile_select.index() == delta.tile_placed().0 && tile_select.kind() == &delta.tile_placed().1.kind())
-                        .then(|| (i, tile_select.kind().clone(), tile_select.index(), *entity))
-                }).expect("Placed tile not in your hand");
-            std::mem::drop(storage);
+            // Delete placed tile if necessary
+            else if delta.tile_placer() == looker {
+                let storage = world.world.read_component::<TileSelect>();
+                let (i, kind, index, entity) = self.tile_hand_entities.iter()
+                    .enumerate()
+                    .find_map(|(i, entity)| {
+                        let tile_select = storage.get(*entity).expect("Hand tile is missing TileSelect");
+                        (tile_select.index() == delta.tile_placed().0 && tile_select.kind() == &delta.tile_placed().1.kind())
+                            .then(|| (i, tile_select.kind().clone(), tile_select.index(), *entity))
+                    }).expect("Placed tile not in your hand");
+                std::mem::drop(storage);
 
-            world.world.delete_entity(entity).expect("Entity deleted too early");
-            self.tile_hand_entities.remove(i);
+                world.world.delete_entity(entity).expect("Entity deleted too early");
+                self.tile_hand_entities.remove(i);
 
-            // Shift indexes
-            let mut storage = world.world.write_component::<TileSelect>();
-            for entity in &self.tile_hand_entities {
-                let tile_select = storage.get_mut(*entity).expect("Hand tile is missing TileSelect");
-                if tile_select.kind() == &kind && tile_select.index() > index {
-                    *tile_select.index_mut() -= 1;
+                // Shift indexes
+                let mut storage = world.world.write_component::<TileSelect>();
+                for entity in &self.tile_hand_entities {
+                    let tile_select = storage.get_mut(*entity).expect("Hand tile is missing TileSelect");
+                    if tile_select.kind() == &kind && tile_select.index() > index {
+                        *tile_select.index_mut() -= 1;
+                    }
+                }
+            }
+
+            // Add new tiles
+            for (player, index, tile) in delta.drawn_tiles() {
+                if *player == looker {
+                    let entity = tile.create_hand_entity(
+                        *index, 
+                        &tile.identity_action(),
+                        &mut world.world, 
+                        &mut world.id_counter
+                    );
+                    self.tile_hand_entities.push(entity);
                 }
             }
         }
+    }
 
-        for (player, index, tile) in delta.drawn_tiles() {
-            if *player == self.state.looker_expect() {
-                let entity = tile.create_hand_entity(
-                    *index, 
-                    &tile.identity_action(),
-                    &mut world.world, 
-                    &mut world.id_counter
-                );
-                self.tile_hand_entities.push(entity);
-            }
+    fn display_player_state(&mut self, world: &mut GameWorld, player: u32, html_string: &mut String) {
+        let token = render::render_token(player, self.state.num_players(), &mut world.id_counter);
+        let tile_svgs = self.state.player_state(player)
+            .map(|state| state.tiles_vec())
+            .into_iter()
+            .flat_map(|tiles| tiles.into_iter().flat_map(|(_, tiles)| tiles))
+            .map(|tile| render::wrap_svg(&tile.render(), "state-tile"))
+            .collect::<String>();
+
+        let state_string = xml! {
+            <div class="state">
+                <div class="state-top">
+                    <div class="state-token">
+                        <svg xmlns={SVG_NS} viewBox={spaced!(-TOKEN_RADIUS, -TOKEN_RADIUS, TOKEN_RADIUS * 2.0, TOKEN_RADIUS * 2.0)}
+                        width="20" height="20">{token}</svg>
+                    </div>
+                    <div class="state-username">{self.player_usernames[player as usize]}</div>
+                </div>
+                <div class="state-tiles">{tile_svgs}</div>
+                <div class="state-separator"></div>
+            </div>
+        }.to_string();
+        html_string.push_str(&state_string);
+    }
+
+    /// Displays the state of the game in the state panel.
+    pub fn display_state(&mut self, world: &mut GameWorld) {
+        let state_panel = document().get_element_by_id("state_panel").expect("Missing state panel");
+
+        let mut html_string = String::new();
+
+        for player in 0..self.state.num_players() {
+            self.display_player_state(world, player, &mut html_string);
         }
+
+        state_panel.set_inner_html(&html_string);
+        state_panel.remove_attribute("style").expect("Failed to show state panel"); // remove the hiding attribute
+        document().get_element_by_id("right_panel").expect("Missing right panel")
+            .set_attribute("style", "display: none").expect("Failed to hide right panel");
     }
 }
 
@@ -223,7 +298,7 @@ pub mod gameplay {
             world.world.get_mut::<RunPlaceTokenSystem>().expect("Missing RunPlaceTokenSystem").0 = true;
 
             if let Some(port) = world.world.get_mut::<PlacedPort>().expect("Missing PlacedPort").0.take() {
-                requests.push(Request::PlaceToken { player: app.state.looker_expect(), port });
+                requests.push(Request::PlaceToken { player: app.state.player_expect(), port });
                 // Suspend this while waiting for the check
                 world.world.get_mut::<RunPlaceTokenSystem>().expect("Missing RunPlaceTokenSystem").0 = false;
                 WaitPlaceTokenCheck { start_ports: self.start_ports, token_entity: self.token_entity }.into()
@@ -244,7 +319,7 @@ pub mod gameplay {
 
         fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
             match response {
-                Response::PlacedToken { player, port } => if player == app.state.looker_expect() {
+                Response::PlacedToken { player, port } => if player == app.state.player_expect() {
                     world.world.delete_entity(self.token_entity).expect("Entity was deleted too early");
                     world.world.delete_entities(&self.start_ports).expect("Entity was deleted too early");
                     WaitPlaceTokens.into()
@@ -282,7 +357,7 @@ pub mod gameplay {
 
         fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
             if let Response::YourTurn = response {
-                let port = app.state.board_state().player_port(app.state.looker_expect()).expect("Port should be placed");
+                let port = app.state.board_state().player_port(app.state.player_expect()).expect("Port should be placed");
                 let locs = app.game.board().port_locs(&port).into_iter().map(|loc| {
                     app.game.board().create_loc_collider_entity(&loc, &mut world.world, &mut world.id_counter)
                 }).collect();
@@ -347,7 +422,7 @@ pub mod gameplay {
                 let kind = world.world.read_component::<TileLabel>().get(tile_entity)
                     .expect("Tile is missing label").0.kind();
                 requests.push(Request::PlaceTile {
-                    player: app.state.looker_expect(),
+                    player: app.state.player_expect(),
                     kind,
                     index: self.tile_index,
                     action: self.tile_action.clone().expect("Group action should exist"),
@@ -377,7 +452,7 @@ pub mod gameplay {
 
         fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
             match response {
-                Response::PlacedTile{ player, .. } => if player == app.state.looker_expect() {
+                Response::PlacedTile{ player, .. } => if player == app.state.player_expect() {
                     self.tile_entity.map(|e| world.world.delete_entity(e).expect("Entity was deleted too early"));
                     world.world.delete_entities(&self.locs).expect("Entity was deleted too early");
                     world.world.get_mut::<SelectedTile>().expect("Missing SelectedTile").2 = None;

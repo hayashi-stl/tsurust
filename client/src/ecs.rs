@@ -20,7 +20,7 @@ use wasm_bindgen::{JsCast, prelude::Closure};
 use web_sys::{DomParser, Element, KeyboardEvent, MouseEvent, SupportedType, SvgElement, SvgGraphicsElement, SvgMatrix, SvgsvgElement};
 
 use crate::game::GameWorld;
-use crate::render::{BaseTileExt, SvgMatrixExt};
+use crate::render::{BaseTileExt, SvgMatrixExt, self};
 use crate::{SVG_NS, add_event_listener, console_log, document};
 
 /// Transformation component. Sets transform of other objects
@@ -594,7 +594,7 @@ impl<'a> System<'a> for SelectTileSystem {
                 if let Some(action) = data.selected_tile.1.clone() {
                     if action != tile_select.action {
                         let old = elem.first_child().expect("Expected a tile svg");
-                        let new = tile.0.apply_action(&action).render();
+                        let new = render::parse_svg(&tile.0.apply_action(&action).render());
                         elem.replace_child(&new, &old).expect("Failed to replace tile svg");
                         tile_select.action = action;
                     }
@@ -629,7 +629,7 @@ impl<'a> System<'a> for SelectTileSystem {
             let elem = document().get_element_by_id(&model.id).expect("Missing model element");
             elem.set_attribute(
                 "class", 
-                if tile_select.selected { "tile-selected" } else { "tile-unselected" }
+                if tile_select.selected { "bottom-tile tile-selected" } else { "bottom-tile tile-unselected" }
             ).expect("Cannot set tile select style");
         }
     }

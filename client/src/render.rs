@@ -11,6 +11,7 @@ use common::nalgebra::{ComplexField, vector};
 use common::{board::{BaseBoard, BasePort, Board, RectangleBoard}, for_each_board, for_each_game, game::{BaseGame, Game, PathGame}, math::Vec2, tile::{RegularTile, Tile}};
 use common::board::{BaseTLoc, Port, TLoc};
 use common::tile::{BaseGAct, BaseKind, BaseTile, Kind};
+use format_xml::{xml, spaced};
 use getset::{CopyGetters, Getters, MutGetters};
 use itertools::{Itertools, chain, iproduct, izip};
 use specs::prelude::*;
@@ -28,7 +29,7 @@ use crate::{SVG_NS, add_event_listener, console_log, document};
 //        .expect("Wrong type specified")
 //}
 
-fn parse_svg(svg_str: &str) -> SvgElement {
+pub fn parse_svg(svg_str: &str) -> SvgElement {
     let svg = DomParser::new().unwrap().parse_from_string(&svg_str, SupportedType::ImageSvgXml)
         .expect("SVG could not be created");
     svg.document_element().expect("SVG doesn't have an element")
@@ -53,7 +54,8 @@ impl SvgMatrixExt for SvgMatrix {
 /// Extension trait for Board, mainly for rendering since
 /// the server should know nothing about rendering
 pub trait BoardExt: Board {
-    fn render(&self) -> SvgElement;
+    /// Render the tile to an SVG string. Returns a string instead of SvgElement for ease of use with `xml!`
+    fn render(&self) -> String;
 
     fn port_position(&self, port: &Self::Port) -> Pt2;
 
@@ -67,22 +69,20 @@ pub trait BoardExt: Board {
 }
 
 impl BoardExt for RectangleBoard {
-    fn render(&self) -> SvgElement {
-        let svg_str = format!(r##"<g xmlns="{}" class="rectangular-board">"##, SVG_NS) +
+    fn render(&self) -> String {
+        format!(r##"<g xmlns="{}" class="rectangular-board">"##, SVG_NS) +
             &chain!(
                 iproduct!(0..self.height(), 0..self.width()).map(|(y, x)|
-                    format!(r##"<rect x="{}" y="{}" width="1" height="1"/>"##, x, y)),
+                    xml!(<rect x={x} y={y} width="1" height="1"/>).to_string()),
                 self.boundary_ports().into_iter().map(|(min, d)| {
                     let v = self.port_position(&(min, d));
                     let dx = if d.x == 0 { 0.1 } else { 0.0 };
                     let dy = if d.y == 0 { 0.1 } else { 0.0 };
-                    format!(r##"<line x1="{}" x2="{}" y1="{}" y2="{}" class="rectangular-board-notch"/>"##, v.x - dx, v.x + dx, v.y - dy, v.y + dy)
+                    xml!(<line x1={v.x - dx} x2={v.x + dx} y1={v.y - dy} y2={v.y + dy} class="rectangular-board-notch"/>).to_string()
                 })
             )
                 .join("") +
-            r##"</g>"##;
-
-        parse_svg(&svg_str)
+            r##"</g>"##
     }
 
     fn port_position(&self, port: &<Self as Board>::Port) -> Pt2 {
@@ -94,11 +94,11 @@ impl BoardExt for RectangleBoard {
     }
 
     fn render_collider(&self, loc: &Self::TLoc) -> SvgElement {
-        let svg_str = format!(concat!(
-            r##"<g xmlns="{}" fill="transparent">"##,
-            r##"<rect x="-0.5" y="-0.5" width="1" height="1"/>"##,
-            r##"</g>"##
-        ), SVG_NS);
+        let svg_str = xml! {
+            <g xmlns={SVG_NS} fill="transparent">
+                <rect x="-0.5" y="-0.5" width="1" height="1"/>
+            </g>
+        }.to_string();
         parse_svg(&svg_str)
     }
 
@@ -117,7 +117,7 @@ impl BoardExt for RectangleBoard {
 /// Extension trait for BaseBoard, mainly for rendering since
 /// the server should know nothing about rendering
 pub trait BaseBoardExt {
-    fn render(&self) -> SvgElement;
+    fn render(&self) -> String;
     
     fn port_position(&self, port: &BasePort) -> Pt2;
 
@@ -131,7 +131,7 @@ for_each_board! {
     p::x, t => 
 
     impl BaseBoardExt for BaseBoard {
-        fn render(&self) -> SvgElement {
+        fn render(&self) -> String {
             match self {
                 $($($p)*::$x(b) => b.render()),*
             }
@@ -178,17 +178,17 @@ fn regular_polygon_svg_str(n: u32) -> String {
     let poly_str = regular_polygon_points(n).into_iter()
         .map(|vec| format!("{},{}", vec.x, vec.y))
         .join(" ");
-    format!(r##"<polygon points="{}"/>"##, poly_str)
+    xml!(<polygon points={poly_str}/>).to_string()
 }
 
 /// Extension trait for Tile, mainly for rendering since
 /// the server should know nothing about rendering
 pub trait TileExt: Tile {
-    fn render(&self) -> SvgElement;
+    fn render(&self) -> String;
 }
 
 impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
-    fn render(&self) -> SvgElement {
+    fn render(&self) -> String {
         if self.visible() {
             let connections = (0..self.num_ports()).map(|i| self.output(i)).collect_vec();
             let mut covered = vec![false; connections.len()];
@@ -211,28 +211,23 @@ impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
                     let p1 = pts_normals[s as usize].0 + pts_normals[s as usize].1 * curviness;
                     let p2 = pts_normals[t as usize].0 + pts_normals[t as usize].1 * curviness;
                     let p3 = pts_normals[t as usize].0;
-                    format!(concat!(
-                        r##"<path class="regular-tile-path-outer" d="M {0},{1} C {2},{3} {4},{5} {6},{7}"/>"##,
-                        r##"<path class="regular-tile-path-inner" d="M {0},{1} C {2},{3} {4},{5} {6},{7}"/>"##,
-                    ), p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y)
+                    let result = xml!(
+                        <path class="regular-tile-path-outer" d=("M "{p0.x}","{p0.y}" C "{p1.x}","{p1.y}" "{p2.x}","{p2.y}" "{p3.x}","{p3.y})/>
+                        <path class="regular-tile-path-inner" d=("M "{p0.x}","{p0.y}" C "{p1.x}","{p1.y}" "{p2.x}","{p2.y}" "{p3.x}","{p3.y})/>
+                    ).to_string();
+                    result
                 })
                 .join("");
 
             let poly_str = regular_polygon_svg_str(EDGES);
-            let svg_str = format!(concat!(
-                r##"<g xmlns="{}" class="regular-tile-visible">"##,
-                "{}{}",
-                r##"</g>"##,
-            ), SVG_NS, poly_str, path_str);
-            parse_svg(&svg_str)
+            xml!(
+                <g xmlns={SVG_NS} class="regular-tile-visible">{poly_str}{path_str}</g>
+            ).to_string()
         } else {
             let poly_str = regular_polygon_svg_str(EDGES);
-            let svg_str = format!(concat!(
-                r##"<g xmlns="{}" class="regular-tile-hidden">"##,
-                r##"{}"##,
-                r##"</g>"##,
-            ), SVG_NS, poly_str);
-            parse_svg(&svg_str)
+            xml!(
+                <g xmlns={SVG_NS} class="regular-tile-hidden">{poly_str}</g>
+            ).to_string()
         }
     }
 }
@@ -240,7 +235,7 @@ impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
 /// Extension trait for BaseTile, mainly for rendering since
 /// the server should know nothing about rendering
 pub trait BaseTileExt {
-    fn render(&self) -> SvgElement;
+    fn render(&self) -> String;
 
     fn create_hand_entity(&self, index: u32, action: &BaseGAct, world: &mut World, id_counter: &mut u64) -> Entity;
 
@@ -255,15 +250,15 @@ for_each_tile! {
     p::x, t => 
 
     impl BaseTileExt for BaseTile {
-        fn render(&self) -> SvgElement {
+        fn render(&self) -> String {
             match self { $($($p)*::$x(b) => b.render()),* }
         }
 
         fn create_hand_entity(&self, index: u32, action: &BaseGAct, world: &mut World, id_counter: &mut u64) -> Entity {
             match self { $($($p)*::$x(b) => {
                 let svg = self.apply_action(action).render();
-                let wrapper = wrap_svg(&svg.dyn_into().unwrap(), 128);
-                wrapper.set_attribute("class", "tile-unselected").expect("Cannot set tile select class");
+                let wrapper = parse_svg(&wrap_svg(&svg, ""));
+                wrapper.set_attribute("class", "bottom-tile tile-unselected").expect("Cannot set tile select class");
                 world.create_entity()
                     .with(TileLabel(self.clone()))
                     .with(Model::new(&wrapper, 0, &GameWorld::bottom_panel(), id_counter))
@@ -284,7 +279,7 @@ for_each_tile! {
             match self { $($($p)*::$x(b) => {
                 let svg = self.apply_action(action).render();
                 self.create_board_entity_common(world, id_counter)
-                    .with(Model::new(&svg, Model::ORDER_TILE_HOVER, &GameWorld::svg_root(), id_counter))
+                    .with(Model::new(&parse_svg(&svg), Model::ORDER_TILE_HOVER, &GameWorld::svg_root(), id_counter))
                     .with(TileToPlace)
                     .with(transform)
                     .build()
@@ -295,7 +290,7 @@ for_each_tile! {
             match self { $($($p)*::$x(b) => {
                 let svg = self.render();
                 self.create_board_entity_common(world, id_counter)
-                    .with(Model::new(&svg, Model::ORDER_TILE, &GameWorld::svg_root(), id_counter))
+                    .with(Model::new(&parse_svg(&svg), Model::ORDER_TILE, &GameWorld::svg_root(), id_counter))
                     .with(Transform::new(board.loc_position(loc)))
                     .build()
             }),* }
@@ -347,11 +342,11 @@ for_each_game! {
 
 /// Renders a port collider, used for detecting whether the mouse is hovering over a port
 pub fn render_port_collider() -> SvgElement {
-    let svg_str = format!(concat!(
-        r##"<g xmlns="{0}" fill="transparent">"##,
-        r##"<circle r="0.167"/>"##,
-        r##"</g>"##,
-    ), SVG_NS);
+    let svg_str = xml! {
+        <g xmlns={SVG_NS} fill="transparent">
+            <circle r="0.167"/>
+        </g>
+    }.to_string();
     parse_svg(&svg_str)
 }
 
@@ -365,35 +360,33 @@ fn hsv_to_rgb(mut h: f32, s: f32, v: f32) -> Vec3f {
     (Vec3f::from([1.0, 1.0, 1.0]) * (1.0 - s) + vec * s) * v
 }
 
+pub const TOKEN_RADIUS: f64 = 0.1;
+
 /// Renders a player token, given the player index and the number of players.
-pub fn render_token(index: u32, num_players: u32, id_counter: &mut u64) -> SvgElement {
+pub fn render_token(index: u32, num_players: u32, id_counter: &mut u64) -> String {
     let color = hsv_to_rgb(index as f32 / num_players as f32, 1.0, 1.0);
     let darker = color * 3.0 / 4.0;
     let color: Vec3u = na::try_convert(color * 255.0).expect("Color conversion failed");
     let darker: Vec3u = na::try_convert(darker * 255.0).expect("Color conversion failed");
-    let svg_str = format!(concat!(
-        r##"<g xmlns="{0}" transform="translate(0, 0)">"##,
-        r##"<defs>"##,
-        r##"<radialGradient id="g{7}">"##,
-        r##"<stop offset="0%" stop-color="#{1:02x}{2:02x}{3:02x}"/>"##,
-        r##"<stop offset="100%" stop-color="#{4:02x}{5:02x}{6:02x}"/>"##,
-        r##"</radialGradient>"##,
-        r##"</defs>"##,
-        r##"<circle r="0.1" fill="url('#g{7}')"/>"##,
-        r##"</g>"##
-    ), SVG_NS, color.x, color.y, color.z, darker.x, darker.y, darker.z, {*id_counter += 1; *id_counter - 1});
-    parse_svg(&svg_str)
+    let id = {*id_counter += 1; *id_counter - 1};
+    let result = xml!(
+        <g xmlns={SVG_NS} transform="translate(0, 0)">
+            <defs>
+                <radialGradient id=("g"{id})>
+                    <stop offset="0%" stop-color=("#"{color.x;02x}{color.y;02x}{color.z;02x})/>
+                    <stop offset="100%" stop-color=("#"{darker.x;02x}{darker.y;02x}{darker.z;02x})/>
+                </radialGradient>
+            </defs>
+            <circle r={TOKEN_RADIUS} fill=("url('#g"{id}"')")/>
+        </g>
+    ).to_string();
+    result
 }
 
-/// Wraps the SVG in an `<svg>` element of a specific size.
-/// The viewport is set so the svg fits snugly inside.
-pub fn wrap_svg(svg: &SvgGraphicsElement, size: u32) -> SvgElement {
-    let bbox = svg.get_b_box().expect("Cannot get bounding box");
-    let wrapper_str = format!(concat!(
-        r##"<svg xmlns="{0}" width="{1}" height="{1}" viewBox="{2} {3} {4} {5}">"##,
-        r##"</svg>"##
-    ), SVG_NS, size, -0.5, -0.5, 1, 1);//bbox.x(), bbox.y(), bbox.width(), bbox.height());
-    let wrapper = parse_svg(&wrapper_str);
-    wrapper.append_child(svg).expect("Cannot wrap svg");
-    wrapper
+/// Wraps the SVG in an `<svg>` element of a specific class.
+/// TODO: The viewport is set so the svg fits snugly inside.
+pub fn wrap_svg(svg: &str, class: &str) -> String {
+    xml!(
+        <svg xmlns={SVG_NS} class={class} viewBox={spaced!(-0.5, -0.5, 1, 1)}>{svg}</svg>
+    ).to_string()
 }

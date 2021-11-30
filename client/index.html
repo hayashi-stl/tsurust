@@ -16,9 +16,11 @@
           <svg id="svg_root" xmlns="http://www.w3.org/2000/svg" viewBox="-0.5 -0.5 7 7" class="game-svg">
           </svg>
         </div>
-        <div class="right-panel">
+        <div id="right_panel" class="right-panel">
           <p id="usernames"></p>
           <input type="button" id="start" value="Start Game"/>
+        </div>
+        <div id="state_panel" class="state-panel" style="display: none;">
         </div>
       </div>
       <div class="action-panel" id="action_panel">
@@ -28,5 +30,15 @@
       <div class="bottom-panel" id="bottom_panel">
       </div>
     </div>
+    <template id="player_status">
+      <div class="state">
+        <div class="state-top">
+          <div class="state-token"></div>
+          <div class="state-username">Username</div>
+        </div>
+        <div class="state-tiles"></div>
+        <div class="state-separator"></div>
+      </div>
+    </template>
   </body>
 </html>

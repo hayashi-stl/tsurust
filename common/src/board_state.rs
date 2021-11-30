@@ -6,9 +6,10 @@ use std::fmt::Debug;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
-use crate::board::{BasePort, Board, RectangleBoard, Port};
+use crate::board::{BasePort, Board, RectangleBoard, Port, BaseTLoc, TLoc};
 use crate::game::Game;
-use crate::tile::{RegularTile, Tile};
+use crate::tile::{RegularTile, Tile, BaseTile};
+use crate::WrapBase;
 
 #[macro_export]
 macro_rules! for_each_board_state {
@@ -41,6 +42,15 @@ for_each_board_state! {
         pub fn player_port(&self, player: u32) -> Option<BasePort> {
             match self { $($($p)*::$x(s) => s.player_port(player).map(|port| port.clone().wrap_base())),* }
         }
+
+        /// All the tiles on the board
+        pub fn tiles_vec(&self) -> Vec<(BaseTLoc, BaseTile)> {
+            match self { $($($p)*::$x(s) => 
+                s.tiles_vec().into_iter()
+                    .map(|(k, v)| (k.clone().wrap_base(), v.clone().wrap_base()))
+                    .collect()
+            ),* }
+        }
     }
 
     $($crate::impl_wrap_base!(BaseBoardState::$x($t)))*;
@@ -66,6 +76,11 @@ where
             tiles: FnvHashMap::default(),
             players: vec![None; num_players as usize],
         }
+    }
+
+    /// All the tiles on the board
+    pub fn tiles_vec(&self) -> Vec<(&B::TLoc, &T)> {
+        self.tiles.iter().collect()
     }
 
     /// Tile on tile location. None if there's no tile there

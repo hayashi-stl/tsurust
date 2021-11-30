@@ -46,14 +46,66 @@ html, body {
 }
 
 .right-panel {
-    flex: 0 0 200px;
+    flex: 0 0 300px;
     background-color: rgb(169, 184, 224);
+}
+
+.state-panel {
+    flex: 0 0 300px;
+    background-color: rgb(169, 184, 224);
+    display: flex;
+    flex-direction: column;
+}
+
+.state {
+    display: flex;
+    flex-direction: column;
+}
+
+.state-top {
+    display: flex;
+    flex-direction: row;
+}
+
+.state-token {
+    margin: 4px;
+}
+
+.state-username {
+    margin: 4px;
+    font-size: medium;
+}
+
+.state-tiles {
+    margin: 2px;
+    display: flex;
+    flex-direction: row;
+}
+
+.state-tile {
+    margin: 2px;
+    width: 30px;
+    height: 30px;
+}
+
+.state-separator {
+    width: 95%;
+    height: 2px;
+    align-self: center;
+    background-color: #405060;
+    margin-top: 4px;
+    margin-bottom: 4px;
 }
 
 .main-panel {
     flex: auto;
     background-color: white;
     display: flex;
+}
+
+.bottom-tile {
+    width: 128px;
+    height: 128px;
 }
 
 .tile-selected {

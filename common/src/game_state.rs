@@ -7,17 +7,11 @@ use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 use log::*;
 
-use crate::{
-    board::{BasePort, BaseTLoc, Board, RectangleBoard, TLoc},
-    board_state::BoardState, game::{Game, PathGame},
-    pcg64,
-    player_state::PlayerState,
-    tile::{BaseKind, RegularTile, Tile, Kind}
-};
+use crate::{board::{BasePort, BaseTLoc, Board, RectangleBoard, TLoc}, board_state::BoardState, game::{Game, PathGame}, pcg64, player_state::{Looker, PlayerState}, tile::{BaseKind, RegularTile, Tile, Kind}};
 use crate::tile::{BaseTile, GAct, BaseGAct};
 use crate::board_state::BaseBoardState;
 use crate::board::Port;
-use crate::player_state::BasePlayerState;
+use crate::player_state::{BasePlayerState, LookerTag};
 use crate::game::BaseGame;
 use crate::WrapBase;
 
@@ -49,7 +43,7 @@ for_each_game_state! {
     }
 
     impl BaseGameState {
-        pub fn visible_state(&self, looker: u32) -> BaseGameState {
+        pub fn visible_state(&self, looker: Looker) -> BaseGameState {
             match self { $($($p)*::$x(s) => s.visible_state(looker).wrap_base()),* }
         }
 
@@ -74,13 +68,18 @@ for_each_game_state! {
         }
 
         /// The player looking at this state, or None if no specific person
-        pub fn looker(&self) -> Option<u32> {
+        pub fn looker(&self) -> Looker {
             match self { $($($p)*::$x(s) => s.looker()),* }
         }
 
-        /// Gets the looker expectantly. Should only be called by clients.
-        pub fn looker_expect(&self) -> u32 {
-            match self { $($($p)*::$x(s) => s.looker().expect("Should be lookin'")),* }
+        /// Gets the looker as a player expectantly. Should only be called by clients.
+        pub fn player_expect(&self) -> u32 {
+            match self { $($($p)*::$x(s) => if let Looker::Player(player) = s.looker() {player} else {panic!("Should be a player'")}),* }
+        }
+
+        /// Whether this looker is a player instead of a spectator
+        pub fn is_player(&self) -> bool {
+            match self { $($($p)*::$x(s) => s.looker().tag() == LookerTag::Player),* }
         }
 
         pub fn num_players(&self) -> u32 {
@@ -129,6 +128,7 @@ for_each_game_state! {
                     dead_players: res.dead_players,
                     num_tiles_left: res.num_tiles_left.into_iter().map(|(k, n)| (k.wrap_base(), n)).collect(),
                     drawn_tiles: res.drawn_tiles.into_iter().map(|(p, i, t)| (p, i, t.wrap_base())).collect(),
+                    winners: res.winners,
                 }
             }),* }
         }
@@ -152,9 +152,8 @@ pub struct GameState<G: Game> {
     #[getset(get = "pub")]
     board_state: BoardState<G::Board, G::Tile>,
     player_states: Vec<Option<PlayerState<G::Tile>>>,
-    /// Some if a player is looking at this state after calling visible_state()
     #[getset(get_copy = "pub")]
-    looker: Option<u32>,
+    looker: Looker,
     turn_player: u32,
     tiles: FnvHashMap<G::Kind, VecDeque<G::Tile>>,
 }
@@ -175,7 +174,7 @@ impl<G: Game> GameState<G> {
         let mut state = Self {
             board_state: BoardState::new(game, num_players),
             player_states: vec![Some(PlayerState::new(game)); num_players as usize],
-            looker: None,
+            looker: Looker::Server,
             turn_player: 0,
             tiles,
         };
@@ -196,14 +195,15 @@ impl<G: Game> GameState<G> {
         self.player_states[player as usize].as_ref()
     }
 
-    /// The state of the game visible to `looker`
-    pub fn visible_state(&self, looker: u32) -> GameState<G> {
+    /// The state of the game visible to `looker`.
+    /// `looker` is None for spectators.
+    pub fn visible_state(&self, looker: Looker) -> GameState<G> {
         GameState {
             board_state: self.board_state().clone(),
             player_states: self.player_states.iter().enumerate().map(|(player, maybe_state)|
                 maybe_state.as_ref().map(|state| state.visible_state(player as u32, looker)))
                 .collect_vec(),
-            looker: Some(looker),
+            looker,
             turn_player: self.turn_player,
             tiles: self.tiles.iter().map(|(kind, tiles)|
                 (kind.clone(), tiles.iter().map(|t| t.clone().with_visible(false)).collect()))
@@ -230,7 +230,7 @@ impl<G: Game> GameState<G> {
     pub fn deal_tile(&mut self, player: u32, kind: &G::Kind) -> Option<(u32, G::Tile)> {
         self.next_tile(kind).zip(self.player_states[player as usize].as_mut())
             .map(|(mut tile, state)| {
-                tile.set_visible(self.looker.map_or(true, |looker| player == looker));
+                tile.set_visible(self.looker.tag() != LookerTag::Player || self.looker == Looker::Player(player));
                 state.add_tile(tile.clone());
                 (state.num_tiles_by_kind(kind) as u32 - 1, tile)
             })
@@ -359,12 +359,16 @@ impl<G: Game> GameState<G> {
             self.deal_tile(self.turn_player, kind).map(|(index, tile)| (self.turn_player, index, tile)).into_iter().collect()
         };
 
+        let mut winners = vec![];
+        let mut all_dead = false;
         if let Some(next) = (0..self.num_players()).cycle().skip(self.turn_player() as usize + 1).take(self.num_players() as usize)
             .filter(|player| self.player_state(*player).is_some()).next()
         {
             self.turn_player = next;
         } else {
-            unimplemented!("What to do when all players are dead")
+            // Every player died, so the last ones that remained won
+            all_dead = true;
+            winners = dead.clone();
         }
 
         let player_ports = (0..self.num_players())
@@ -374,6 +378,16 @@ impl<G: Game> GameState<G> {
             .map(|(kind, tiles)| (kind.clone(), tiles.len() as u32))
             .collect();
 
+        // If everyone's out of tiles, the game's over
+        if !all_dead && self.player_states.iter()
+            .flat_map(|maybe| maybe.as_ref())
+            .all(|state| !state.has_tiles())
+        {
+            winners = (0..self.num_players())
+                .filter(|player| self.player_state(*player).is_some())
+                .collect();
+        }
+
         TurnResult {
             tile_placer,
             tile_placed: (index, tile_placed),
@@ -382,6 +396,7 @@ impl<G: Game> GameState<G> {
             dead_players: dead,
             num_tiles_left,
             drawn_tiles,
+            winners,
         }
     }
 }
@@ -410,6 +425,9 @@ pub struct TurnResult<G: Game> {
     /// New tiles drawn by players in (player, index, tile) format
     #[getset(get = "pub")]
     drawn_tiles: Vec<(u32, u32, G::Tile)>,
+    /// Which player(s) won the game, if it's over
+    #[getset(get = "pub")]
+    winners: Vec<u32>,
 }
 
 /// The stuff that happened during a turn
@@ -436,6 +454,9 @@ pub struct BaseTurnResult {
     /// New tiles drawn by players in (player, index, tile) format
     #[getset(get = "pub")]
     drawn_tiles: Vec<(u32, u32, BaseTile)>,
+    /// Which player(s) won the game, if it's over
+    #[getset(get = "pub")]
+    winners: Vec<u32>,
 }
 
 #[cfg(test)]
