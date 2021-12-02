@@ -7,7 +7,7 @@ use common::game::BaseGame;
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlTemplateElement};
 
-use crate::{SVG_NS, console_log, document, ecs::{Model, TileSelect, Transform}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS}};
+use crate::{SVG_NS, console_log, document, ecs::{Model, TileSelect, Transform}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS}, window};
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
@@ -56,6 +56,14 @@ impl AppStateT for EnterUsername {
 
             Response::Usernames{ names } => {
                 self.usernames = names;
+                self.into()
+            }
+
+            Response::Rejected => {
+                let username = window().prompt_with_message("Enter a username. The one you entered is already taken.")
+                    .unwrap_or(None)
+                    .unwrap_or("Guest".to_owned());
+                requests.push(Request::SetUsername{ name: username });
                 self.into()
             }
 
@@ -200,6 +208,9 @@ impl Game {
             .map(|tile| render::wrap_svg(&tile.render(), "state-tile"))
             .collect::<String>();
 
+        let dead = self.state.player_state(player).is_none();
+        let won = self.state.won(player);
+        let turn = self.state.turn_player() == player;
         let state_string = xml! {
             <div class="state">
                 <div class="state-top">
@@ -207,7 +218,9 @@ impl Game {
                         <svg xmlns={SVG_NS} viewBox={spaced!(-TOKEN_RADIUS, -TOKEN_RADIUS, TOKEN_RADIUS * 2.0, TOKEN_RADIUS * 2.0)}
                         width="20" height="20">{token}</svg>
                     </div>
-                    <div class="state-username">{self.player_usernames[player as usize]}</div>
+                    <div class=("state-username"{if dead {"-dead"} else {""}})>{self.player_usernames[player as usize]}</div>
+                    if (won) { <div class="state-winner">"WIN"</div> }
+                    if (turn && !self.state.game_over()) { <div class="state-winner">"TURN"</div> }
                 </div>
                 <div class="state-tiles">{tile_svgs}</div>
                 <div class="state-separator"></div>
@@ -225,6 +238,26 @@ impl Game {
         for player in 0..self.state.num_players() {
             self.display_player_state(world, player, &mut html_string);
         }
+
+        let draw_pile_svgs = self.state.num_tiles_left_by_kind().into_iter()
+            .filter(|(_, num_tiles)| *num_tiles > 0)
+            .map(|(kind, num_tiles)| {
+                let representative = self.state.top_tile_left_of_kind(&kind)
+                    .expect("Must have at least 1 tile in the pile");
+
+                let tile_svg = render::wrap_svg(&representative.render(), "state-draw-tile");
+                xml!(
+                    <div class="state-draw-pile">
+                        {tile_svg}
+                        <div class="state-draw-count">{num_tiles}</div>
+                    </div>
+                ).to_string()
+            })
+            .collect::<String>();
+
+        html_string += &xml! {
+            <div class="state-draw-piles">{draw_pile_svgs}</div>
+        }.to_string();
 
         state_panel.set_inner_html(&html_string);
         state_panel.remove_attribute("style").expect("Failed to show state panel"); // remove the hiding attribute

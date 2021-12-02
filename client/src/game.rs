@@ -106,33 +106,6 @@ impl GameWorld {
             .build();
 
         let (tile_hand_entities, gameplay_state) = if let Looker::Player(player) = state.looker() {
-            let start_ports = game.start_ports_and_positions().into_iter()
-                .map(|(port, position)| {
-                    let svg = render::render_port_collider();
-                    self.world.create_entity()
-                        .with(Transform::new(position))
-                        .with(Model::new(
-                            &svg,
-                            Collider::ORDER_START_PORT,
-                            &Self::svg_root(),
-                            &mut self.id_counter
-                        ))
-                        .with(Collider::new(&svg))
-                        .with(TokenSlot)
-                        .with(PortLabel(port))
-                        .build()
-                })
-                .collect_vec();
-            let token_entity = self.world.create_entity()
-                .with(Transform::new(Pt2::origin()))
-                .with(Model::new(
-                    &render::parse_svg(&render::render_token(player, state.num_players(), &mut self.id_counter)),
-                    Model::ORDER_PLAYER_TOKEN, 
-                    &Self::svg_root(), &mut self.id_counter
-                ))
-                .with(TokenToPlace)
-                .build();
-
             let tile_hand_entities = state.player_state(player)
                 .map_or(vec![], |state| state.tiles_vec())
                 .into_iter()
@@ -146,8 +119,44 @@ impl GameWorld {
                     &mut self.id_counter,
                 ))
                 .collect_vec();
+                
+            if state.all_players_placed() {
+                // Rejoined game
+                (tile_hand_entities, gameplay::WaitTurn.into())
+            } else if state.board_state().player_port(player).is_some() {
+                // Rejoined game, already placed port
+                (tile_hand_entities, gameplay::WaitPlaceTokens.into())
+            } else {
+                let start_ports = game.start_ports_and_positions().into_iter()
+                    .map(|(port, position)| {
+                        let svg = render::render_port_collider();
+                        self.world.create_entity()
+                            .with(Transform::new(position))
+                            .with(Model::new(
+                                &svg,
+                                Collider::ORDER_START_PORT,
+                                &Self::svg_root(),
+                                &mut self.id_counter
+                            ))
+                            .with(Collider::new(&svg))
+                            .with(TokenSlot)
+                            .with(PortLabel(port))
+                            .build()
+                    })
+                    .collect_vec();
+                let token_entity = self.world.create_entity()
+                    .with(Transform::new(Pt2::origin()))
+                    .with(Model::new(
+                        &render::parse_svg(&render::render_token(player, state.num_players(), &mut self.id_counter)),
+                        Model::ORDER_PLAYER_TOKEN, 
+                        &Self::svg_root(), &mut self.id_counter
+                    ))
+                    .with(TokenToPlace)
+                    .build();
+                    
+                (tile_hand_entities, gameplay::PlaceToken{ start_ports, token_entity }.into())
+            }
 
-            (tile_hand_entities, gameplay::PlaceToken{ start_ports, token_entity }.into())
         } else {
             (vec![], gameplay::WaitTurn.into())
         };

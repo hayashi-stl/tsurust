@@ -55,9 +55,11 @@ html, body {
     background-color: rgb(169, 184, 224);
     display: flex;
     flex-direction: column;
+    overflow: scroll;
 }
 
 .state {
+    flex: content;
     display: flex;
     flex-direction: column;
 }
@@ -65,10 +67,17 @@ html, body {
 .state-top {
     display: flex;
     flex-direction: row;
+    align-items: center;
 }
 
 .state-token {
     margin: 4px;
+}
+
+.state-winner {
+    margin: 4px;
+    font-size: large;
+    font-weight: bold;
 }
 
 .state-username {
@@ -76,10 +85,17 @@ html, body {
     font-size: medium;
 }
 
+.state-username-dead {
+    margin: 4px;
+    font-size: medium;
+    text-decoration: line-through;
+}
+
 .state-tiles {
     margin: 2px;
     display: flex;
     flex-direction: row;
+    min-height: 32px;
 }
 
 .state-tile {
@@ -95,6 +111,31 @@ html, body {
     background-color: #405060;
     margin-top: 4px;
     margin-bottom: 4px;
+}
+
+.state-draw-piles {
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.state-draw-pile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.state-draw-tile {
+    margin: 4px;
+    width: 100px;
+    height: 100px;
+}
+
+.state-draw-count {
+    margin: 4px;
+    font-size: x-large;
 }
 
 .main-panel {

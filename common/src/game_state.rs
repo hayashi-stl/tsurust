@@ -94,6 +94,34 @@ for_each_game_state! {
             match self { $($($p)*::$x(s) => s.player_state(player).map(|state| state.clone().wrap_base())),* }
         }
 
+        /// Whether the game is over
+        pub fn game_over(&self) -> bool {
+            match self { $($($p)*::$x(s) => s.game_over()),* }
+        }
+
+        /// Whether some player won the game
+        pub fn won(&self, player: u32) -> bool {
+            match self { $($($p)*::$x(s) => s.winners().contains(&player)),* }
+        }
+
+        /// Number of tiles left of each kind in the draw pile
+        pub fn num_tiles_left_by_kind(&self) -> Vec<(BaseKind, u32)> {
+            match self { $($($p)*::$x(s) => 
+                s.num_tiles_left_by_kind().into_iter()
+                    .map(|(kind, num)| (kind.wrap_base(), num))
+                    .collect()
+            ),* }
+        }
+
+        /// The tile at the top of the draw pile of some kind.
+        /// None if there're no tiles of that kind left.
+        pub fn top_tile_left_of_kind(&self, kind: &BaseKind) -> Option<BaseTile> {
+            match self { $($($p)*::$x(s) => 
+                s.top_tile_left_of_kind(<<$t as GameStateT>::Game as Game>::Kind::unwrap_base_ref(kind))
+                    .map(|tile| tile.clone().wrap_base())
+            ),* }
+        }
+
         /// Whose turn it is
         pub fn turn_player(&self) -> u32 {
             match self { $($($p)*::$x(s) => s.turn_player()),* }
@@ -128,7 +156,7 @@ for_each_game_state! {
                     dead_players: res.dead_players,
                     num_tiles_left: res.num_tiles_left.into_iter().map(|(k, n)| (k.wrap_base(), n)).collect(),
                     drawn_tiles: res.drawn_tiles.into_iter().map(|(p, i, t)| (p, i, t.wrap_base())).collect(),
-                    winners: res.winners,
+                    game_over: res.game_over,
                 }
             }),* }
         }
@@ -156,6 +184,8 @@ pub struct GameState<G: Game> {
     looker: Looker,
     turn_player: u32,
     tiles: FnvHashMap<G::Kind, VecDeque<G::Tile>>,
+    #[getset(get = "pub")]
+    winners: Vec<u32>,
 }
 
 impl<G: Game> GameState<G> {
@@ -177,6 +207,7 @@ impl<G: Game> GameState<G> {
             looker: Looker::Server,
             turn_player: 0,
             tiles,
+            winners: vec![],
         };
 
         // deal tiles
@@ -207,7 +238,8 @@ impl<G: Game> GameState<G> {
             turn_player: self.turn_player,
             tiles: self.tiles.iter().map(|(kind, tiles)|
                 (kind.clone(), tiles.iter().map(|t| t.clone().with_visible(false)).collect()))
-                .collect()
+                .collect(),
+            winners: self.winners.clone(),
         }
     }
 
@@ -260,6 +292,25 @@ impl<G: Game> GameState<G> {
     /// Whether all players placed their tokens
     pub fn all_players_placed(&self) -> bool {
         self.board_state().all_players_placed()
+    }
+
+    /// Number of tiles left of each kind in the draw pile
+    pub fn num_tiles_left_by_kind(&self) -> Vec<(&G::Kind, u32)> {
+        self.tiles.iter()
+            .map(|(kind, tiles)| (kind, tiles.len() as u32))
+            .collect()
+    }
+
+    /// The tile at the top of the draw pile of some kind.
+    /// None if there're no tiles of that kind left.
+    pub fn top_tile_left_of_kind(&self, kind: &G::Kind) -> Option<&G::Tile> {
+        self.tiles.get(kind)
+            .and_then(|tiles| tiles.into_iter().next())
+    }
+
+    /// Whether the game is over
+    pub fn game_over(&self) -> bool {
+        !self.winners.is_empty()
     }
 
     /// Move players that touch a tile along their respective paths until they face a dead end.
@@ -359,7 +410,6 @@ impl<G: Game> GameState<G> {
             self.deal_tile(self.turn_player, kind).map(|(index, tile)| (self.turn_player, index, tile)).into_iter().collect()
         };
 
-        let mut winners = vec![];
         let mut all_dead = false;
         if let Some(next) = (0..self.num_players()).cycle().skip(self.turn_player() as usize + 1).take(self.num_players() as usize)
             .filter(|player| self.player_state(*player).is_some()).next()
@@ -368,7 +418,7 @@ impl<G: Game> GameState<G> {
         } else {
             // Every player died, so the last ones that remained won
             all_dead = true;
-            winners = dead.clone();
+            self.winners = dead.clone();
         }
 
         let player_ports = (0..self.num_players())
@@ -378,14 +428,21 @@ impl<G: Game> GameState<G> {
             .map(|(kind, tiles)| (kind.clone(), tiles.len() as u32))
             .collect();
 
-        // If everyone's out of tiles, the game's over
-        if !all_dead && self.player_states.iter()
-            .flat_map(|maybe| maybe.as_ref())
-            .all(|state| !state.has_tiles())
-        {
-            winners = (0..self.num_players())
-                .filter(|player| self.player_state(*player).is_some())
-                .collect();
+        if !all_dead {
+            let mut remaining = (0..self.num_players())
+                .filter(|player| self.player_state(*player).is_some());
+            if let (Some(winner), None) = (remaining.next(), remaining.next()) {
+                // Unique player remaning, game is over
+                self.winners = vec![winner];
+            } else if self.player_states.iter()
+                .flat_map(|maybe| maybe.as_ref())
+                .all(|state| !state.has_tiles())
+            {
+                // If everyone's out of tiles, the game's over
+                self.winners = (0..self.num_players())
+                    .filter(|player| self.player_state(*player).is_some())
+                    .collect();
+            }
         }
 
         TurnResult {
@@ -396,7 +453,7 @@ impl<G: Game> GameState<G> {
             dead_players: dead,
             num_tiles_left,
             drawn_tiles,
-            winners,
+            game_over: !self.winners.is_empty()
         }
     }
 }
@@ -425,9 +482,9 @@ pub struct TurnResult<G: Game> {
     /// New tiles drawn by players in (player, index, tile) format
     #[getset(get = "pub")]
     drawn_tiles: Vec<(u32, u32, G::Tile)>,
-    /// Which player(s) won the game, if it's over
+    /// Whether the game is over
     #[getset(get = "pub")]
-    winners: Vec<u32>,
+    game_over: bool,
 }
 
 /// The stuff that happened during a turn
@@ -454,9 +511,9 @@ pub struct BaseTurnResult {
     /// New tiles drawn by players in (player, index, tile) format
     #[getset(get = "pub")]
     drawn_tiles: Vec<(u32, u32, BaseTile)>,
-    /// Which player(s) won the game, if it's over
+    /// Whether the game is over
     #[getset(get = "pub")]
-    winners: Vec<u32>,
+    game_over: bool,
 }
 
 #[cfg(test)]

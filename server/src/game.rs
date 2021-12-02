@@ -1,11 +1,11 @@
 use std::net::SocketAddr;
 
 use common::{game::{BaseGame, GenericGame}, game_state::BaseGameState};
-use getset::Getters;
+use getset::{Getters, CopyGetters};
 
-#[derive(Clone, Debug, Getters)]
+#[derive(Clone, Debug, Getters, CopyGetters)]
 pub(crate) struct Player {
-    #[getset(get = "pub")]
+    #[getset(get_copy = "pub")]
     addr: SocketAddr,
     #[getset(get = "pub")]
     username: String,
@@ -40,13 +40,19 @@ impl GameInstance {
         self.state.is_some()
     }
 
-    /// Adds a player to the game by address and username. Does nothing if the game has started.
-    /// Returns whether the player got added.
-    pub fn add_player(&mut self, addr: SocketAddr, username: String) -> bool {
-        if !self.started() {
+    /// Adds a player to the game by address and username, replacing the address
+    /// if the username is already in the game. Does not add new players if the game has started.
+    /// Returns the player's index if they got added or their address got replaced.
+    pub fn add_player(&mut self, addr: SocketAddr, username: String) -> Option<u32> {
+        if let Some((index, player)) = self.players.iter_mut().enumerate()
+            .find(|(i, player)| player.username == username)
+        {
+            player.addr = addr;
+            Some(index as u32)
+        } else if !self.started() {
             self.players.push(Player { addr, username });
-            true
-        } else { false }
+            Some(self.players.len() as u32 - 1)
+        } else { None }
     }
 
     /// Removes a player from the game. Returns whether the player was in the game.
@@ -60,9 +66,16 @@ impl GameInstance {
         } else { false }
     }
 
-    /// Adds a spectator to the game by address and username.
+    /// Adds a spectator to the game by address and username, replacing the address if the
+    /// username already exists.
     pub fn add_spectator(&mut self, addr: SocketAddr, username: String) {
-        self.spectators.push(Player { addr, username })
+        if let Some((index, spectator)) = self.spectators.iter_mut().enumerate()
+            .find(|(i, spectator)| spectator.username == username)
+        {
+            spectator.addr = addr;
+        } else {
+            self.spectators.push(Player { addr, username })
+        }
     }
 
     /// Removes a spectator from the game. Does nothing if they weren't in the game.

@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, collections::HashMap};
 
 use common::{board::{Board, RectangleBoard}, game::PathGame, message::Response};
 use common::WrapBase;
@@ -26,6 +26,8 @@ impl Peer {
 pub(crate) struct State {
     #[getset(get = "pub")]
     peers: PeerMap,
+    /// Maps usernames to addresses
+    inv_peers: HashMap<String, SocketAddr>,
     #[getset(get = "pub", get_mut = "pub")]
     game: GameInstance,
 }
@@ -37,11 +39,12 @@ impl State {
         let game = PathGame::new(
             RectangleBoard::new(6, 6, 2),
             start_ports,
-            [((), 3)],
+            [((), 11)],
         );
 
         Self {
             peers: FnvHashMap::default(),
+            inv_peers: HashMap::default(),
             game: GameInstance::new(game.wrap_base())
         }
     }
@@ -53,18 +56,28 @@ impl State {
     
     /// Removes a peer
     pub fn remove_peer(&mut self, addr: SocketAddr) {
+        if let Some(username) = self.peers.get(&addr).map(|peer| peer.username()) {
+            self.inv_peers.remove(username);
+        }
         self.peers.remove(&addr);
     }
     
     /// Set the username of a peer, assuming it exists.
-    pub fn set_username(&mut self, addr: SocketAddr, username: String) {
-        self.peers.get_mut(&addr)
-            .expect("Expected peer to exist")
-            .username = username;
+    /// Returns false instead if the username is not unique.
+    pub fn set_username(&mut self, addr: SocketAddr, username: String) -> bool {
+        if self.inv_peers.contains_key(&username) {
+            false
+        } else {
+            self.peers.get_mut(&addr)
+                .expect("Expected peer to exist")
+                .username = username.clone();
+            self.inv_peers.insert(username, addr);
+            true
+        }
     }
 
-    /// Get the peer, assuming it exists.
-    pub fn peer(&self, addr: SocketAddr) -> &Peer {
-        &self.peers[&addr]
+    /// Get the peer, if it exists.
+    pub fn peer(&self, addr: SocketAddr) -> Option<&Peer> {
+        self.peers.get(&addr)
     }
 }

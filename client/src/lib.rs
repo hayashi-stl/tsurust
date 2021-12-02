@@ -77,7 +77,7 @@ fn run() -> Result<(), JsValue> {
     let username = window().prompt_with_message("Enter a username")
         .unwrap_or(None)
         .unwrap_or("Guest".to_owned());
-    send_request(&Request::SetUsername{ name: username.clone() }, &ws);
+    send_request(&Request::SetUsername{ name: username }, &ws);
 
     let cws = ws.clone();
     add_event_listener(&document().get_element_by_id("start").unwrap(), "click", move |_: Event| {
