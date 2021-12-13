@@ -512,7 +512,7 @@ pub struct BaseTurnResult {
     #[getset(get = "pub")]
     drawn_tiles: Vec<(u32, u32, BaseTile)>,
     /// Whether the game is over
-    #[getset(get = "pub")]
+    #[getset(get_copy = "pub")]
     game_over: bool,
 }
 

@@ -1,13 +1,13 @@
-use std::{net::SocketAddr, collections::HashMap};
+use std::{net::SocketAddr, collections::{HashMap, HashSet}};
 
 use common::{board::{Board, RectangleBoard}, game::PathGame, message::Response};
+use common::game::{GameId, BaseGame};
 use common::WrapBase;
 use fnv::FnvHashMap;
 use futures::channel::mpsc::UnboundedSender;
 use getset::{Getters, MutGetters};
 
-use crate::game::GameInstance;
-
+use crate::game::{GameInstance, Player};
 
 type PeerMap = FnvHashMap<SocketAddr, Peer>;
 
@@ -29,23 +29,35 @@ pub(crate) struct State {
     /// Maps usernames to addresses
     inv_peers: HashMap<String, SocketAddr>,
     #[getset(get = "pub", get_mut = "pub")]
-    game: GameInstance,
+    games: Vec<GameInstance>,
+    /// Map of players outside any game to their addresses
+    #[getset(get = "pub")]
+    lobby: HashMap<String, SocketAddr>,
+    id_counter: u32,
 }
 
 impl State {
     pub fn new() -> Self {
-        let board = RectangleBoard::new(6, 6, 2);
-        let start_ports = board.boundary_ports();
-        let game = PathGame::new(
-            RectangleBoard::new(6, 6, 2),
-            start_ports,
-            [((), 11)],
-        );
-
         Self {
             peers: FnvHashMap::default(),
             inv_peers: HashMap::default(),
-            game: GameInstance::new(game.wrap_base())
+            games: vec![],
+            lobby: HashMap::default(),
+            id_counter: 0,
+        }
+    }
+
+    pub fn add_to_lobby(&mut self, username: String, addr: SocketAddr) {
+        self.lobby.insert(username, addr);
+    }
+
+    pub fn remove_from_lobby(&mut self, username: &str) {
+        self.lobby.remove(username);
+    }
+
+    pub fn remove_from_lobby_by_addr(&mut self, addr: SocketAddr) {
+        if let Some(peer) = self.peers.get(&addr) {
+            self.lobby.remove(peer.username());
         }
     }
 
@@ -79,5 +91,31 @@ impl State {
     /// Get the peer, if it exists.
     pub fn peer(&self, addr: SocketAddr) -> Option<&Peer> {
         self.peers.get(&addr)
+    }
+
+    pub fn peers_and_games_mut(&mut self) -> (&PeerMap, &mut [GameInstance]) {
+        (&self.peers, &mut self.games)
+    }
+
+    /// Adds a game to the list and returns a reference to it.
+    pub fn add_game(&mut self, game: BaseGame) -> &GameInstance {
+        let id = GameId(self.id_counter);
+        self.id_counter += 1;
+        self.games.push(GameInstance::new(id, game));
+        self.games.last().unwrap()
+    }
+
+    fn game_index(&self, id: GameId) -> Option<usize> {
+        self.games.binary_search_by_key(&id, |game| game.id()).ok()
+    }
+
+    /// Gets a game by id, if it exists
+    pub fn game(&self, id: GameId) -> Option<&GameInstance> {
+        self.game_index(id).map(|i| &self.games[i])
+    }
+
+    /// Gets a game mutably by id, if it exists
+    pub fn game_mut(&mut self, id: GameId) -> Option<&mut GameInstance> {
+        self.game_index(id).map(|i| &mut self.games[i])
     }
 }

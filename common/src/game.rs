@@ -10,6 +10,9 @@ use crate::game_state::BaseGameState;
 use crate::board::BaseBoard;
 use crate::WrapBase;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GameId(pub u32);
+
 #[enum_dispatch]
 pub trait GenericGame {
     fn new_state(&self, num_players: u32) -> BaseGameState;

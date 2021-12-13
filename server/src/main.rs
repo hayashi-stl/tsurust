@@ -67,7 +67,7 @@ async fn handle_connection(peer: SocketAddr, stream: TcpStream, state: Arc<Mutex
     };
     info!("{} disconnected", peer);
     state.lock().await.remove_peer(peer);
-    respond_to_request(Request::RemovePeer{ addr: peer }, peer, &state).await;
+    respond_to_request(Request::RemovePeer, peer, &state).await;
     result
 }
 

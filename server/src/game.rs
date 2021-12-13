@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use common::{game::{BaseGame, GenericGame}, game_state::BaseGameState};
+use common::{game::{BaseGame, GenericGame, GameId}, game_state::BaseGameState, player_state::Looker};
 use getset::{Getters, CopyGetters};
 
 #[derive(Clone, Debug, Getters, CopyGetters)]
@@ -11,8 +11,10 @@ pub(crate) struct Player {
     username: String,
 }
 
-#[derive(Debug, Getters)]
+#[derive(Debug, Getters, CopyGetters)]
 pub(crate) struct GameInstance {
+    #[getset(get_copy = "pub")]
+    id: GameId,
     #[getset(get = "pub")]
     game: BaseGame,
     /// None if the game hasn't started
@@ -26,13 +28,23 @@ pub(crate) struct GameInstance {
 }
 
 impl GameInstance {
-    pub fn new(game: BaseGame) -> Self {
+    pub fn new(id: GameId, game: BaseGame) -> Self {
         Self {
+            id,
             game,
             state: None,
             players: vec![],
             spectators: vec![]
         }
+    }
+
+    pub fn to_common(&self) -> common::GameInstance {
+        common::GameInstance::new(
+            self.id,
+            self.game.clone(),
+            self.state.clone(),
+            self.players.iter().map(|player| player.username().clone()).collect(),
+        )
     }
 
     /// Whether the game has started

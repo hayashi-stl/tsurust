@@ -63,7 +63,7 @@ impl AppStateT for EnterUsername {
                 let username = window().prompt_with_message("Enter a username. The one you entered is already taken.")
                     .unwrap_or(None)
                     .unwrap_or("Guest".to_owned());
-                requests.push(Request::SetUsername{ name: username });
+                requests.push(Request::SetUsername{ username });
                 self.into()
             }
 

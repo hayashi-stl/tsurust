@@ -77,10 +77,10 @@ fn run() -> Result<(), JsValue> {
     let username = window().prompt_with_message("Enter a username")
         .unwrap_or(None)
         .unwrap_or("Guest".to_owned());
-    send_request(&Request::SetUsername{ name: username }, &ws);
+    send_request(&Request::SetUsername{ username }, &ws);
 
     let cws = ws.clone();
-    add_event_listener(&document().get_element_by_id("start").unwrap(), "click", move |_: Event| {
+    add_event_listener(&document().get_element_by_id("create").unwrap(), "click", move |_: Event| {
         send_request(&Request::StartGame, &cws);
     });
     

@@ -7,10 +7,17 @@ pub mod board_state;
 pub mod game_state;
 pub mod message;
 
+use game::GameId;
+use game::BaseGame;
+use game_state::BaseGameState;
+use getset::{Getters, CopyGetters};
 pub use nalgebra;
+use player_state::Looker;
 use rand::{distributions::{Uniform, uniform::UniformInt}, prelude::Distribution, thread_rng};
 use rand_pcg::Pcg64;
 use rand_core::SeedableRng;
+use serde::Deserialize;
+use serde::Serialize;
 
 pub const HOST_ADDRESS: &str = "127.0.0.1:7878";
 
@@ -105,4 +112,29 @@ macro_rules! impl_wrap_base {
             }
         }
     };
+}
+
+#[derive(Clone, Debug, Getters, CopyGetters, Serialize, Deserialize)]
+pub struct GameInstance {
+    #[getset(get_copy = "pub")]
+    id: GameId,
+    #[getset(get = "pub")]
+    game: BaseGame,
+    /// None if the game hasn't started
+    #[getset(get = "pub")]
+    state: Option<BaseGameState>,
+    /// stores username
+    #[getset(get = "pub")]
+    players: Vec<String>, 
+}
+
+impl GameInstance {
+    pub fn new(id: GameId, game: BaseGame, state: Option<BaseGameState>, players: Vec<String>) -> Self {
+        Self { id, game, state, players }
+    }
+
+    /// Sets the looker of the game state. The game state must exist.
+    pub fn set_looker(&mut self, looker: Looker) {
+        self.state = Some(self.state.as_ref().unwrap().visible_state(looker));
+    }
 }

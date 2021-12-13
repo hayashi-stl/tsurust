@@ -2,7 +2,8 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::game::BaseGame;
+use crate::GameInstance;
+use crate::game::{BaseGame, GameId};
 use crate::game_state::BaseGameState;
 use crate::board::{BasePort, BaseTLoc};
 use crate::tile::{BaseKind, BaseGAct};
@@ -11,34 +12,45 @@ use crate::tile::{BaseKind, BaseGAct};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Request {
     /// Set the username for a player
-    SetUsername{ name: String },
+    SetUsername{ username: String },
+    JoinLobby,
+    CreateGame,
+    JoinGame{ id: GameId },
     /// Starts the game
-    StartGame,
-    PlaceToken{ player: u32, port: BasePort },
-    PlaceTile{ player: u32, kind: BaseKind, index: u32, action: BaseGAct, loc: BaseTLoc },
-    RemovePeer{ addr: SocketAddr },
+    StartGame{ id: GameId },
+    PlaceToken{ id: GameId, player: u32, port: BasePort },
+    PlaceTile{ id: GameId, player: u32, kind: BaseKind, index: u32, action: BaseGAct, loc: BaseTLoc },
+    RemovePeer,
 }
 
 /// The response type used by the server to communicate to the client
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Response {
     /// Responds with the index of the player
-    PlayerIndex{ index: u32 },
-    /// Responds with the usernames of all players, in order of index
-    Usernames{ names: Vec<String> },
+    PlayerIndex{ id: GameId, index: u32 },
+    /// List of players of the game have changed
+    ChangedPlayers{ id: GameId, names: Vec<String> },
+    /// A game was created or edited in the lobby
+    ChangedGame{ game: GameInstance },
+    /// A game was joined
+    JoinedGame{ game: GameInstance },
+    /// The lobby was joined. The lobby has games.
+    JoinedLobby{ games: Vec<GameInstance> },
     /// Responds with the game's state
-    State{ game: BaseGame, state: BaseGameState },
+    StartedGame{ game: GameInstance },
     /// Player `player` has placed a token on port `port`.
-    PlacedToken{ player: u32, port: BasePort },
+    PlacedToken{ id: GameId, player: u32, port: BasePort },
+    /// Invalid username
+    RejectedUsername,
     /// Invalid move, please undo
-    Rejected,
+    Rejected{ id: GameId },
     /// Everyone placed their tokens; it's time to place some tiles
-    AllPlacedTokens,
+    AllPlacedTokens{ id: GameId },
     /// It's your turn, make a move
-    YourTurn,
+    YourTurn{ id: GameId },
     /// Player `player` has placed a tile transformed by group action `action`
     /// from index `index` in their list of tiles of kind `kind` onto location `loc`.
-    PlacedTile{ player: u32, kind: BaseKind, index: u32, action: BaseGAct, loc: BaseTLoc },
+    PlacedTile{ id: GameId, player: u32, kind: BaseKind, index: u32, action: BaseGAct, loc: BaseTLoc },
     ///// Players moved across tiles. Stores a port per player
     //CrossedTiles{ new_ports: Vec<G::Port> },
     ///// Players died. Stores players that died

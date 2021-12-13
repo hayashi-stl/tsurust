@@ -50,6 +50,28 @@ html, body {
     background-color: rgb(169, 184, 224);
 }
 
+.main-panel {
+    flex: auto;
+    background-color: white;
+    display: flex;
+}
+
+.game-panel {
+    flex: auto;
+    background-color: white;
+    display: flex;
+    overflow-x: hidden;
+    overflow-y: scroll;
+}
+
+.game-box {
+    border-style: solid;
+    background-color: white;
+    padding: 4px;
+    width: 250;
+    height: 250;
+}
+
 .state-panel {
     flex: 0 0 300px;
     background-color: rgb(169, 184, 224);
@@ -136,12 +158,6 @@ html, body {
 .state-draw-count {
     margin: 4px;
     font-size: x-large;
-}
-
-.main-panel {
-    flex: auto;
-    background-color: white;
-    display: flex;
 }
 
 .bottom-tile {
