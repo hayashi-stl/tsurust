@@ -37,7 +37,7 @@ pub enum Response {
     /// The lobby was joined. The lobby has games.
     JoinedLobby{ games: Vec<GameInstance> },
     /// Responds with the game's state
-    StartedGame{ game: GameInstance },
+    StartedGame{ id: GameId, state: BaseGameState },
     /// Player `player` has placed a token on port `port`.
     PlacedToken{ id: GameId, player: u32, port: BasePort },
     /// Invalid username

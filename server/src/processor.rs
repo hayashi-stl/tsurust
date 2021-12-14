@@ -160,14 +160,15 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
 
                         to_process.push_back(ElementaryRequest::NotifyChangeGame{ id });
 
+                        let game_state = game.state().as_ref()
+                            .expect("Game started, there should be a state");
                         players_spectators.into_iter().enumerate().map(|(index, user)| {
-                            let mut game_common = game.to_common();
-                            game_common.set_looker(if (index as u32) < game.num_players() {
+                            let this_state = game_state.visible_state(if (index as u32) < game.num_players() {
                                     Looker::Player(index as u32)
                                 } else {
                                     Looker::Spectator
                                 });
-                            (user.addr(), Response::StartedGame { game: game.to_common() })
+                            (user.addr(), Response::StartedGame { id, state: this_state })
                         })
                         .chain(state.lobby().values().map(|addr| (
                             *addr, Response::ChangedGame{ game: game.to_common() }

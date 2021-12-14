@@ -6,7 +6,7 @@ use std::sync::mpsc::Sender;
 use std::{cell::Cell, marker::PhantomData};
 use std::fmt::Debug;
 use std::hash::Hash;
-use common::{for_each_tile, nalgebra, nalgebra as na};
+use common::{for_each_tile, nalgebra, nalgebra as na, GameInstance};
 
 use common::math::{Mtx2, Pt2, Vec2f, Vec3f, Vec3u, pt2};
 use common::nalgebra::{ComplexField, vector};
@@ -22,6 +22,14 @@ use web_sys::{DomParser, Element, KeyboardEvent, MouseEvent, SupportedType, SvgE
 use crate::game::GameWorld;
 use crate::render::{BaseTileExt, SvgMatrixExt, self};
 use crate::{SVG_NS, add_event_listener, console_log, document};
+
+/// Labels a game in the lobby with a GameInstance
+#[derive(Clone, Debug)]
+pub struct GameInstanceLabel(pub GameInstance);
+
+impl Component for GameInstanceLabel {
+    type Storage = DenseVecStorage<Self>;
+}
 
 /// Transformation component. Sets transform of other objects
 #[derive(Clone, Debug)]

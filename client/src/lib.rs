@@ -81,7 +81,7 @@ fn run() -> Result<(), JsValue> {
 
     let cws = ws.clone();
     add_event_listener(&document().get_element_by_id("create").unwrap(), "click", move |_: Event| {
-        send_request(&Request::StartGame, &cws);
+        send_request(&Request::CreateGame, &cws);
     });
     
     let cws = ws.clone();

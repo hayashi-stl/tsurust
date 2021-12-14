@@ -4,7 +4,7 @@ use std::sync::mpsc::Sender;
 use std::{cell::Cell, marker::PhantomData};
 use std::fmt::Debug;
 use std::hash::Hash;
-use common::{for_each_tile, nalgebra, nalgebra as na};
+use common::{for_each_tile, nalgebra, nalgebra as na, GameInstance};
 
 use common::math::{Mtx2, Pt2, Vec2f, Vec3f, Vec3u, pt2};
 use common::nalgebra::{ComplexField, vector};
@@ -18,7 +18,7 @@ use specs::prelude::*;
 use wasm_bindgen::{JsCast, prelude::Closure};
 use web_sys::{DomParser, Element, MouseEvent, SupportedType, SvgElement, SvgGraphicsElement, SvgMatrix, SvgsvgElement};
 
-use crate::ecs::{Collider, Model, TLocLabel, TileSlot, Transform, TileLabel, TileSelect, TileToPlace};
+use crate::ecs::{Collider, Model, TLocLabel, TileSlot, Transform, TileLabel, TileSelect, TileToPlace, GameInstanceLabel};
 use crate::game::GameWorld;
 use crate::{SVG_NS, add_event_listener, console_log, document};
 
@@ -34,6 +34,13 @@ pub fn parse_svg(svg_str: &str) -> SvgElement {
         .expect("SVG could not be created");
     svg.document_element().expect("SVG doesn't have an element")
         .dyn_into().expect("SVG is not an SVG")
+}
+
+/// Creates a entity corresponding to a game instance.
+pub fn game_entity(game: GameInstance, world: &mut World) -> Entity {
+    world.create_entity()
+        .with(GameInstanceLabel(game))
+        .build()
 }
 
 pub trait SvgMatrixExt {

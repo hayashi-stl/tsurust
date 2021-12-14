@@ -137,4 +137,9 @@ impl GameInstance {
     pub fn set_looker(&mut self, looker: Looker) {
         self.state = Some(self.state.as_ref().unwrap().visible_state(looker));
     }
+
+    /// Extracts all the fields for separate manipulation.
+    pub fn into_fields(self) -> (GameId, BaseGame, Option<BaseGameState>, Vec<String>) {
+        (self.id, self.game, self.state, self.players)
+    }
 }

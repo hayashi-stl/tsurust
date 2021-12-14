@@ -45,6 +45,11 @@ html, body {
     flex-direction: row;
 }
 
+.lobby-panel {
+    flex: 0 0 300px;
+    background-color: rgb(169, 184, 224);
+}
+
 .right-panel {
     flex: 0 0 300px;
     background-color: rgb(169, 184, 224);
