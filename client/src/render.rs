@@ -2,7 +2,7 @@ use std::f64::consts::TAU;
 use std::rc::Rc;
 use std::sync::mpsc::Sender;
 use std::{cell::Cell, marker::PhantomData};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use common::{for_each_tile, nalgebra, nalgebra as na, GameInstance};
 
@@ -29,6 +29,12 @@ use crate::{SVG_NS, add_event_listener, console_log, document};
 //        .expect("Wrong type specified")
 //}
 
+pub fn parse_elem(elem_str: &str) -> Element {
+    let elem = DomParser::new().unwrap().parse_from_string(&elem_str, SupportedType::ApplicationXml)
+        .expect("Element could not be created");
+    elem.document_element().expect("Element doesn't have an element")
+}
+
 pub fn parse_svg(svg_str: &str) -> SvgElement {
     let svg = DomParser::new().unwrap().parse_from_string(&svg_str, SupportedType::ImageSvgXml)
         .expect("SVG could not be created");
@@ -36,9 +42,83 @@ pub fn parse_svg(svg_str: &str) -> SvgElement {
         .dyn_into().expect("SVG is not an SVG")
 }
 
+/// State of the client screen
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScreenState {
+    Lobby,
+    StatelessGame,
+    Game
+}
+
+impl Display for ScreenState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Lobby => write!(f, "lobby"),
+            Self::StatelessGame => write!(f, "stateless-game"),
+            Self::Game => write!(f, "game"),
+        }
+    }
+}
+    
+pub fn set_screen_state(state: ScreenState) {
+    document().get_element_by_id("screen").unwrap().set_attribute("state", &state.to_string()).unwrap();
+}
+
+/// A rectangle.
+#[derive(Clone, Copy, Debug)]
+pub struct Rect {
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+}
+
+impl Rect {
+    /// From left, top, width, height
+    pub fn from_ltwh(left: f32, top: f32, width: f32, height: f32) -> Self {
+        Self { left, top, width, height }
+    }
+
+    /// From left, top, right, bottom
+    pub fn from_ltrb(left: f32, top: f32, right: f32, bottom: f32) -> Self {
+        Self::from_ltwh(left, top, right - left, bottom - top)
+    }
+
+    /// Converts this to a viewBox value string
+    pub fn to_viewbox_value(self) -> String {
+        format!("{} {} {} {}", self.left, self.top, self.width, self.height)
+    }
+}
+
+/// Renders a game instance as the html string for a selectable game in the lobby
+pub fn render_game_instance(game: &GameInstance) -> String {
+    let title = format!("{}. Normal", game.id().0);
+    let board = game.game().board();
+    let board_svg = board.render();
+    let board_bb = board.bounding_box();
+    let status = if let Some(state) = game.state() {
+        if state.game_over() { "Game Over" } else { "Game Started" }
+    } else { "Game Not Started" };
+    let players = game.players().iter().join("; ");
+
+    xml!(
+        <div class="game-box">
+            <div class="title">{ title }</div>
+            <svg xmlns={SVG_NS} class="board" viewBox={board_bb.to_viewbox_value()}>{ board_svg }</svg>
+            <div class="status">{ status }</div>
+            <div class="players">"Players: "{ players }</div>
+        </div>
+    ).to_string()
+}
+
 /// Creates a entity corresponding to a game instance.
-pub fn game_entity(game: GameInstance, world: &mut World) -> Entity {
+pub fn game_entity(game: GameInstance, world: &mut World, id_counter: &mut u64) -> Entity {
+    let elem = parse_elem(&render_game_instance(&game));
     world.create_entity()
+        .with(Model::new(
+            &elem, -(game.id().0 as i32), &GameWorld::game_panel(), id_counter
+        ))
+        .with(Collider::new(&elem))
         .with(GameInstanceLabel(game))
         .build()
 }
@@ -61,6 +141,9 @@ impl SvgMatrixExt for SvgMatrix {
 /// Extension trait for Board, mainly for rendering since
 /// the server should know nothing about rendering
 pub trait BoardExt: Board {
+    /// Gets the bounding box of the board in SVG space
+    fn bounding_box(&self) -> Rect;
+
     /// Render the tile to an SVG string. Returns a string instead of SvgElement for ease of use with `xml!`
     fn render(&self) -> String;
 
@@ -76,6 +159,10 @@ pub trait BoardExt: Board {
 }
 
 impl BoardExt for RectangleBoard {
+    fn bounding_box(&self) -> Rect {
+        Rect::from_ltrb(-0.1, -0.1, self.width() as f32 + 0.1, self.height() as f32 + 0.1)
+    }
+
     fn render(&self) -> String {
         format!(r##"<g xmlns="{}" class="rectangular-board">"##, SVG_NS) +
             &chain!(
@@ -124,6 +211,8 @@ impl BoardExt for RectangleBoard {
 /// Extension trait for BaseBoard, mainly for rendering since
 /// the server should know nothing about rendering
 pub trait BaseBoardExt {
+    fn bounding_box(&self) -> Rect;
+
     fn render(&self) -> String;
     
     fn port_position(&self, port: &BasePort) -> Pt2;
@@ -138,6 +227,12 @@ for_each_board! {
     p::x, t => 
 
     impl BaseBoardExt for BaseBoard {
+        fn bounding_box(&self) -> Rect {
+            match self {
+                $($($p)*::$x(b) => b.bounding_box()),*
+            }
+        }
+
         fn render(&self) -> String {
             match self {
                 $($($p)*::$x(b) => b.render()),*

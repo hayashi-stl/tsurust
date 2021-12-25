@@ -7,7 +7,7 @@ use common::game::BaseGame;
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlTemplateElement};
 
-use crate::{SVG_NS, console_log, document, ecs::{Model, TileSelect, Transform, Collider, TokenSlot, PortLabel, TokenToPlace}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS, BaseGameExt}, window};
+use crate::{SVG_NS, console_log, document, ecs::{Model, TileSelect, Transform, Collider, TokenSlot, PortLabel, TokenToPlace}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS, BaseGameExt, ScreenState}, window};
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
@@ -91,6 +91,18 @@ impl AppStateT for Lobby {
     fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
         match response {
             Response::ChangedGame { game } => {
+                match self.game_entities.binary_search_by_key(&game.id(), |(id, _)| *id) {
+                    Ok(pos) => {
+                        world.world.delete_entity(self.game_entities[pos].1).ok();
+                        self.game_entities[pos].1 = render::game_entity(game, &mut world.world, &mut world.id_counter);
+                    }
+
+                    Err(pos) => {
+                        let id = game.id();
+                        let entity = render::game_entity(game, &mut world.world, &mut world.id_counter);
+                        self.game_entities.insert(pos, (id, entity));
+                    }
+                }
                 self.into()
             }
 
@@ -109,7 +121,9 @@ impl AppStateT for Lobby {
 impl Lobby {
     fn new(games: Vec<GameInstance>, world: &mut GameWorld) -> Self {
         Self {
-            game_entities: games.into_iter().map(|game| (game.id(), render::game_entity(game, &mut world.world))).collect()
+            game_entities: games.into_iter().map(|game| (
+                game.id(), render::game_entity(game, &mut world.world, &mut world.id_counter)
+            )).collect()
         }
     }
 }
@@ -465,8 +479,7 @@ impl Game {
 
         state_panel.set_inner_html(&html_string);
         state_panel.remove_attribute("style").expect("Failed to show state panel"); // remove the hiding attribute
-        document().get_element_by_id("right_panel").expect("Missing right panel")
-            .set_attribute("style", "display: none").expect("Failed to hide right panel");
+        render::set_screen_state(ScreenState::Game);
     }
 }
 

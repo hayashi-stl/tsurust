@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{Element, SvgElement};
 use enum_dispatch::enum_dispatch;
 
-use crate::{console_log, document, ecs::{BoardInput, ButtonAction, Collider, ColliderInputSystem, KeyLabel, KeyboardInput, KeyboardInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem}, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt}};
+use crate::{console_log, document, ecs::{BoardInput, ButtonAction, Collider, ColliderInputSystem, KeyLabel, KeyboardInput, KeyboardInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem, GameInstanceLabel}, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt}};
 
 mod app;
 use app::{gameplay, AppStateT};
@@ -39,6 +39,7 @@ impl GameWorld {
         world.register::<TileSelect>();
         world.register::<ButtonAction>();
         world.register::<KeyLabel>();
+        world.register::<GameInstanceLabel>();
         world.insert(BoardInput::new(&document().get_element_by_id("svg_root").expect("Missing main panel svg")
             .dyn_into().expect("Not an <svg> element")));
         world.insert(KeyboardInput::new(&document().document_element().expect("Missing root element. What?!")));
@@ -83,6 +84,12 @@ impl GameWorld {
         }
     }
 
+    pub fn game_panel() -> Element {
+        web_sys::window().unwrap()
+            .document().unwrap()
+            .get_element_by_id("game_panel").unwrap()
+    }
+
     pub fn svg_root() -> SvgElement {
         web_sys::window().unwrap()
             .document().unwrap()
@@ -94,7 +101,6 @@ impl GameWorld {
         web_sys::window().unwrap()
             .document().unwrap()
             .get_element_by_id("bottom_panel").unwrap()
-            .dyn_into().unwrap()
     }
 
     pub fn update(&mut self) -> Vec<Request> {

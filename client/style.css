@@ -1,3 +1,7 @@
+* {
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+
 html, body {
     width: 100%;
     height: 100%;
@@ -48,11 +52,21 @@ html, body {
 .lobby-panel {
     flex: 0 0 300px;
     background-color: rgb(169, 184, 224);
+    display: none;
+}
+
+.screen[state="lobby"] .lobby-panel {
+    display: inline;
 }
 
 .right-panel {
     flex: 0 0 300px;
     background-color: rgb(169, 184, 224);
+    display: none;
+}
+
+.screen[state="stateless-game"] .right-panel {
+    display: flex;
 }
 
 .main-panel {
@@ -61,28 +75,74 @@ html, body {
     display: flex;
 }
 
+.screen[state="lobby"] .main-panel {
+    display: none;
+}
+
 .game-panel {
     flex: auto;
     background-color: white;
-    display: flex;
-    overflow-x: hidden;
+    display: none;
+    flex-wrap: wrap;
     overflow-y: scroll;
+}
+
+.screen[state="lobby"] .game-panel {
+    display: flex;
 }
 
 .game-box {
     border-style: solid;
+    border-width: medium;
     background-color: white;
-    padding: 4px;
-    width: 250;
-    height: 250;
+    margin: 4px;
+    width: 250px;
+    height: 250px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.game-box:hover {
+    background-color: #e0e0e0;
+}
+
+.game-box:active {
+    background-color: #c0c0c0;
+}
+
+.game-box > * {
+    flex: none;
+    margin: 3px;
+}
+
+.game-box > .title {
+    font-size: large;
+}
+
+.game-box > .board {
+    height: 125px;
+}
+
+.game-box > .status {
+    font-size: medium;
+    font-style: italic;
+}
+
+.game-box > .players {
+    font-size: small;
 }
 
 .state-panel {
     flex: 0 0 300px;
     background-color: rgb(169, 184, 224);
-    display: flex;
+    display: none;
     flex-direction: column;
     overflow: scroll;
+}
+
+.screen[state="game"] .state-panel {
+    display: flex;
 }
 
 .state {
