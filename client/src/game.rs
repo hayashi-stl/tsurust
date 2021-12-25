@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{Element, SvgElement};
 use enum_dispatch::enum_dispatch;
 
-use crate::{console_log, document, ecs::{BoardInput, ButtonAction, Collider, ColliderInputSystem, KeyLabel, KeyboardInput, KeyboardInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem, GameInstanceLabel}, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt}};
+use crate::{console_log, document, ecs::{BoardInput, ButtonAction, Collider, ColliderInputSystem, KeyLabel, KeyboardInput, KeyboardInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem, GameInstanceLabel, RunSelectGameSystem, SelectGameSystem}, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt}};
 
 mod app;
 use app::{gameplay, AppStateT};
@@ -46,6 +46,7 @@ impl GameWorld {
         world.insert(RunPlaceTokenSystem(true));
         world.insert(RunSelectTileSystem(true));
         world.insert(RunPlaceTileSystem(true));
+        world.insert(RunSelectGameSystem(true));
         world.insert(PlacedPort(None));
         world.insert(SelectedTile(0, None, None));
         world.insert(PlacedTLoc(None));
@@ -68,6 +69,7 @@ impl GameWorld {
             .with(PlaceTokenSystem, "place_token", &["collider_input", "keyboard_input"])
             .with(PlaceTileSystem, "place_tile", &["collider_input", "keyboard_input"])
             .with(SelectTileSystem, "select_tile", &["collider_input", "keyboard_input"])
+            .with(SelectGameSystem, "select_game", &["collider_input", "keyboard_input"])
             .build();
 
         let render_dispatcher = DispatcherBuilder::new()

@@ -7,7 +7,7 @@ use common::game::BaseGame;
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlTemplateElement};
 
-use crate::{SVG_NS, console_log, document, ecs::{Model, TileSelect, Transform, Collider, TokenSlot, PortLabel, TokenToPlace}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS, BaseGameExt, ScreenState}, window};
+use crate::{SVG_NS, console_log, document, ecs::{Model, TileSelect, Transform, Collider, TokenSlot, PortLabel, TokenToPlace, RunSelectGameSystem, SelectedGame}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS, BaseGameExt, ScreenState}, window};
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
@@ -21,6 +21,14 @@ pub struct EnterUsername {
 /// User is in the lobby
 #[derive(Debug)]
 pub struct Lobby {
+    game_entities: Vec<(GameId, Entity)>,
+}
+
+/// User is waiting to join a game.
+/// This happens between sending the request and receiving the response.
+#[derive(Debug)]
+pub struct WaitJoinGame {
+    id: GameId,
     game_entities: Vec<(GameId, Entity)>,
 }
 
@@ -85,7 +93,14 @@ impl AppStateT for EnterUsername {
 
 impl AppStateT for Lobby {
     fn update(self, world: &mut GameWorld, requests: &mut Vec<Request>) -> AppState {
-        self.into()
+        world.world.get_mut::<RunSelectGameSystem>().unwrap().0 = true;
+        if let Some(id) = world.world.get_mut::<SelectedGame>().unwrap().0.take() {
+            world.world.get_mut::<RunSelectGameSystem>().unwrap().0 = false;
+            requests.push(Request::JoinGame{ id });
+            WaitJoinGame{ id, game_entities: self.game_entities }.into()
+        } else {
+            self.into()
+        }
     }
 
     fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
@@ -106,13 +121,6 @@ impl AppStateT for Lobby {
                 self.into()
             }
 
-            Response::JoinedGame { game } => {
-                self.game_entities.drain(..).for_each(|(_, entity)| {
-                    world.world.delete_entity(entity).ok();
-                });
-                Game::app_state(game, world)
-            }
-
             _ => self.into()
         }
     }
@@ -120,10 +128,38 @@ impl AppStateT for Lobby {
 
 impl Lobby {
     fn new(games: Vec<GameInstance>, world: &mut GameWorld) -> Self {
+        render::set_screen_state(ScreenState::Lobby);
         Self {
             game_entities: games.into_iter().map(|game| (
                 game.id(), render::game_entity(game, &mut world.world, &mut world.id_counter)
             )).collect()
+        }
+    }
+}
+
+impl AppStateT for WaitJoinGame {
+    fn update(self, world: &mut GameWorld, requests: &mut Vec<Request>) -> AppState {
+        self.into()
+    }
+
+    fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
+        match response {
+            Response::JoinedGame { game } => {
+                if self.id == game.id() {
+                    self.game_entities.drain(..).for_each(|(_, entity)| {
+                        world.world.delete_entity(entity).ok();
+                    });
+                    Game::app_state(game, world)
+                } else { self.into() }
+            }
+
+            Response::Rejected{ id } => {
+                if self.id == id {
+                    Lobby{ game_entities: self.game_entities }.into()
+                } else { self.into() }
+            }
+
+            _ => self.into()
         }
     }
 }
@@ -164,6 +200,7 @@ impl AppStateT for StatelessGame {
 
 impl StatelessGame {
     fn new(id: GameId, game: BaseGame, players: Vec<String>, world: &mut GameWorld) -> Self {
+        render::set_screen_state(ScreenState::StatelessGame);
         let board_svg = render::parse_svg(&game.board().render());
         let board_entity = world.world.create_entity()
             .with(Model::new(&board_svg, Model::ORDER_BOARD, &GameWorld::svg_root(), &mut world.id_counter))
@@ -173,6 +210,7 @@ impl StatelessGame {
     }
 
     fn with_state(self, state: BaseGameState, world: &mut GameWorld) -> Game {
+        render::set_screen_state(ScreenState::Game);
         let StatelessGame{ id, game, player_usernames, board_entity } = self;
 
         let (tile_hand_entities, gameplay_state) = if let Looker::Player(player) = state.looker() {
@@ -479,7 +517,6 @@ impl Game {
 
         state_panel.set_inner_html(&html_string);
         state_panel.remove_attribute("style").expect("Failed to show state panel"); // remove the hiding attribute
-        render::set_screen_state(ScreenState::Game);
     }
 }
 
@@ -488,6 +525,7 @@ impl Game {
 pub enum AppState {
     EnterUsername,
     Lobby,
+    WaitJoinGame,
     StatelessGame,
     Game,
 }

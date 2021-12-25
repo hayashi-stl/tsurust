@@ -6,6 +6,7 @@ use std::sync::mpsc::Sender;
 use std::{cell::Cell, marker::PhantomData};
 use std::fmt::Debug;
 use std::hash::Hash;
+use common::game::GameId;
 use common::{for_each_tile, nalgebra, nalgebra as na, GameInstance};
 
 use common::math::{Mtx2, Pt2, Vec2f, Vec3f, Vec3u, pt2};
@@ -639,6 +640,38 @@ impl<'a> System<'a> for SelectTileSystem {
                 "class", 
                 if tile_select.selected { "bottom-tile tile-selected" } else { "bottom-tile tile-unselected" }
             ).expect("Cannot set tile select style");
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RunSelectGameSystem(pub bool);
+
+pub struct SelectGameSystem;
+
+/// The game id that's been clicked, if any
+#[derive(Clone, Debug, Default)]
+pub struct SelectedGame(pub Option<GameId>);
+
+#[derive(SystemData)]
+pub struct SelectGameSystemData<'a> {
+    run: Read<'a, RunSelectGameSystem>,
+    selected_game: Write<'a, SelectedGame>,
+    colliders: ReadStorage<'a, Collider>,
+    games: ReadStorage<'a, GameInstanceLabel>,
+}
+
+impl<'a> System<'a> for SelectGameSystem {
+    type SystemData = SelectGameSystemData<'a>;
+
+    fn run(&mut self, mut data: Self::SystemData) {
+        if !data.run.0 { return; }
+
+        for (game, collider) in (&data.games, &data.colliders).join() {
+            if collider.clicked() {
+                data.selected_game.0 = Some(game.0.id());
+                break;
+            }
         }
     }
 }
