@@ -200,6 +200,7 @@ impl AppStateT for StatelessGame {
 
 impl StatelessGame {
     fn new(id: GameId, game: BaseGame, players: Vec<String>, world: &mut GameWorld) -> Self {
+        world.game_start_id.set(id);
         render::set_screen_state(ScreenState::StatelessGame);
         let board_svg = render::parse_svg(&game.board().render());
         let board_entity = world.world.create_entity()

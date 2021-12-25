@@ -3,6 +3,7 @@ pub mod render;
 pub mod game;
 pub mod ecs;
 
+use common::game::GameId;
 use common::message::Request;
 use common::message::Response;
 use wasm_bindgen::convert::FromWasmAbi;
@@ -15,6 +16,7 @@ use web_sys::Event;
 use web_sys::HtmlInputElement;
 use web_sys::Window;
 use web_sys::{BinaryType, MessageEvent, WebSocket, console};
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::iter;
 use std::rc::Rc;
@@ -72,7 +74,8 @@ fn request_animation_frame(callback: &Closure<dyn FnMut()>) {
 fn run() -> Result<(), JsValue> {
     let ws = WebSocket::new(&format!("ws://{}/", common::HOST_ADDRESS))?;
     ws.set_binary_type(BinaryType::Arraybuffer);
-    let game_world = Arc::new(Mutex::new(GameWorld::new()));
+    let game_start_id = Rc::new(Cell::new(GameId(0)));
+    let game_world = Arc::new(Mutex::new(GameWorld::new(Rc::clone(&game_start_id))));
 
     let username = window().prompt_with_message("Enter a username")
         .unwrap_or(None)
@@ -82,6 +85,11 @@ fn run() -> Result<(), JsValue> {
     let cws = ws.clone();
     add_event_listener(&document().get_element_by_id("create").unwrap(), "click", move |_: Event| {
         send_request(&Request::CreateGame, &cws);
+    });
+
+    let cws = ws.clone();
+    add_event_listener(&document().get_element_by_id("start").unwrap(), "click", move |_: Event| {
+        send_request(&Request::StartGame{ id: game_start_id.get() }, &cws);
     });
     
     let cws = ws.clone();

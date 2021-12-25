@@ -1,13 +1,13 @@
-use std::sync::mpsc::{self, Receiver};
+use std::{sync::mpsc::{self, Receiver}, cell::Cell, rc::Rc};
 
-use common::{board::BasePort, game::{BaseGame, GenericGame}, game_state::BaseGameState, math::{Pt2, Vec2}, message::{Request, Response}, player_state::Looker, tile::Tile, GameInstance};
+use common::{board::BasePort, game::{BaseGame, GenericGame, GameId}, game_state::BaseGameState, math::{Pt2, Vec2}, message::{Request, Response}, player_state::Looker, tile::Tile, GameInstance};
 use itertools::Itertools;
 use specs::{Builder, Dispatcher, DispatcherBuilder, Entity, World, WorldExt};
 use wasm_bindgen::JsCast;
 use web_sys::{Element, SvgElement};
 use enum_dispatch::enum_dispatch;
 
-use crate::{console_log, document, ecs::{BoardInput, ButtonAction, Collider, ColliderInputSystem, KeyLabel, KeyboardInput, KeyboardInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem, GameInstanceLabel, RunSelectGameSystem, SelectGameSystem}, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt}};
+use crate::{console_log, document, ecs::{BoardInput, ButtonAction, Collider, ColliderInputSystem, KeyLabel, KeyboardInput, KeyboardInputSystem, Model, PlaceTileSystem, PlaceTokenSystem, PlacedPort, PlacedTLoc, PortLabel, RunPlaceTileSystem, RunPlaceTokenSystem, RunSelectTileSystem, SelectTileSystem, SelectedTile, SvgOrderSystem, TLocLabel, TileLabel, TileSelect, TileSlot, TileToPlace, TokenSlot, TokenToPlace, Transform, TransformSystem, GameInstanceLabel, RunSelectGameSystem, SelectGameSystem, SelectedGame}, render::{self, BaseBoardExt, BaseGameExt, BaseTileExt}};
 
 mod app;
 use app::{gameplay, AppStateT};
@@ -18,13 +18,14 @@ pub struct GameWorld {
     state: Option<app::State>,
     world: World,
     id_counter: u64,
+    game_start_id: Rc<Cell<GameId>>, /// The id of the game to start
     dispatcher: Dispatcher<'static, 'static>,
     render_dispatcher: Dispatcher<'static, 'static>,
 }
 
 impl GameWorld {
     /// Constructs a game world
-    pub fn new() -> Self {
+    pub fn new(game_start_id: Rc<Cell<GameId>>) -> Self {
         let mut world = World::new();
         world.register::<Model>();
         world.register::<Collider>();
@@ -50,6 +51,7 @@ impl GameWorld {
         world.insert(PlacedPort(None));
         world.insert(SelectedTile(0, None, None));
         world.insert(PlacedTLoc(None));
+        world.insert(SelectedGame(None));
 
         world.create_entity()
             .with(Collider::new(&document().get_element_by_id("rotate_ccw").expect("Missing rotate ccw button")))
@@ -81,6 +83,7 @@ impl GameWorld {
             state: Some(app::EnterUsername::default().into()),
             world,
             id_counter: 0,
+            game_start_id,
             dispatcher,
             render_dispatcher,
         }
