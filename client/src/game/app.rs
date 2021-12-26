@@ -166,6 +166,11 @@ impl AppStateT for WaitJoinGame {
 
 impl AppStateT for StatelessGame {
     fn update(self, world: &mut GameWorld, requests: &mut Vec<Request>) -> AppState {
+        if world.world.read_component::<Collider>().get(world.start_game_entity).unwrap().clicked() {
+            requests.push(Request::StartGame{ id: self.id });
+        } else if world.world.read_component::<Collider>().get(world.leave_game_entity).unwrap().clicked() {
+            requests.push(Request::JoinLobby);
+        }
         self.into()
     }
 
@@ -200,7 +205,6 @@ impl AppStateT for StatelessGame {
 
 impl StatelessGame {
     fn new(id: GameId, game: BaseGame, players: Vec<String>, world: &mut GameWorld) -> Self {
-        world.game_start_id.set(id);
         render::set_screen_state(ScreenState::StatelessGame);
         let board_svg = render::parse_svg(&game.board().render());
         let board_entity = world.world.create_entity()
@@ -309,6 +313,9 @@ impl AppStateT for Game {
         self.gameplay_state = Some(self.gameplay_state.take()
             .expect("Missing gameplay state")
             .update(&mut self, world, requests));
+        if world.world.read_component::<Collider>().get(world.leave_game_entity).unwrap().clicked() {
+            requests.push(Request::JoinLobby);
+        }
         self.into()
     }
 

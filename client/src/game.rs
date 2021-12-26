@@ -18,14 +18,15 @@ pub struct GameWorld {
     state: Option<app::State>,
     world: World,
     id_counter: u64,
-    game_start_id: Rc<Cell<GameId>>, /// The id of the game to start
+    start_game_entity: Entity,
+    leave_game_entity: Entity,
     dispatcher: Dispatcher<'static, 'static>,
     render_dispatcher: Dispatcher<'static, 'static>,
 }
 
 impl GameWorld {
     /// Constructs a game world
-    pub fn new(game_start_id: Rc<Cell<GameId>>) -> Self {
+    pub fn new() -> Self {
         let mut world = World::new();
         world.register::<Model>();
         world.register::<Collider>();
@@ -79,11 +80,20 @@ impl GameWorld {
             .with(TransformSystem::new(&world), "transform", &[])
             .build();
 
+        let start_game_entity = world.create_entity()
+            .with(Collider::new(&document().get_element_by_id("start_game").unwrap()))
+            .build();
+
+        let leave_game_entity = world.create_entity()
+            .with(Collider::new(&document().get_element_by_id("leave_game").unwrap()))
+            .build();
+
         Self {
             state: Some(app::EnterUsername::default().into()),
             world,
             id_counter: 0,
-            game_start_id,
+            start_game_entity,
+            leave_game_entity,
             dispatcher,
             render_dispatcher,
         }

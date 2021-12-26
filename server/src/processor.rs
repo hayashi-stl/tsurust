@@ -94,8 +94,17 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
                             ElementaryRequest::NotifyChangeGame{ id },
                         ])
                     }
+
+                    let mut game_inst = game.to_common();
+                    if game.started() {
+                        game_inst.set_looker(if let Some(index) = index {
+                            Looker::Player(index)
+                        } else {
+                            Looker::Spectator
+                        })
+                    };
                     [
-                        Some((requester, Response::JoinedGame{ game: game.to_common() })),
+                        Some((requester, Response::JoinedGame{ game: game_inst } )),
                         game.state().as_ref().map_or(false, |state| index == Some(state.turn_player()))
                             .then(|| (requester, Response::YourTurn{ id }))
                     ].into_iter().flatten().collect()
@@ -105,7 +114,10 @@ pub(crate) fn process_request(req: Request, requester: SocketAddr, state: &mut S
             ElementaryRequest::LeaveGame{ id } => {
                 if let Some(game) = state.game_mut(id) {
                     if game.remove_player(requester) {
-                        to_process.push_back(ElementaryRequest::NotifyChangePlayers{ id });
+                        to_process.extend([
+                            ElementaryRequest::NotifyChangePlayers{ id },
+                            ElementaryRequest::NotifyChangeGame{ id },
+                        ]);
                         vec![]
                     } else {
                         game.remove_spectator(requester);

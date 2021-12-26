@@ -4,7 +4,6 @@
 
 button {
     font-size: large;
-    flex: none;
 }
 
 html, body {
@@ -68,20 +67,29 @@ html, body {
     flex: 0 0 300px;
     background-color: rgb(169, 184, 224);
     display: none;
+    flex-direction: column;
 }
 
 .screen[state="stateless-game"] .right-panel {
-    display: flex;
+    display: inline;
 }
 
 .main-panel {
     flex: auto;
     background-color: white;
     display: flex;
+    position: relative;
 }
 
 .screen[state="lobby"] .main-panel {
     display: none;
+}
+
+.leave-game {
+    position: absolute;
+    bottom: 0px;
+    right: 0px;
+    margin: 3px;
 }
 
 .game-panel {
