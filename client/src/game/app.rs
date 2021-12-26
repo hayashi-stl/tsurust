@@ -178,7 +178,9 @@ impl AppStateT for StatelessGame {
         match response {
             Response::ChangedPlayers{ id, names } => {
                 if id == self.id {
-                    let names_str = names.iter().cloned().join("\n\n");
+                    let names_str = names.iter()
+                        .map(|name| html_escape::encode_text(name))
+                        .join("<br>");
                     document().get_element_by_id("usernames").unwrap().set_inner_html(&names_str);
                     self.player_usernames = names;
                 }
@@ -482,7 +484,9 @@ impl Game {
                         <svg xmlns={SVG_NS} viewBox={spaced!(-TOKEN_RADIUS, -TOKEN_RADIUS, TOKEN_RADIUS * 2.0, TOKEN_RADIUS * 2.0)}
                         width="20" height="20">{token}</svg>
                     </div>
-                    <div class=("state-username"{if dead {"-dead"} else {""}})>{self.player_usernames[player as usize]}</div>
+                    <div class=("state-username"{if dead {"-dead"} else {""}})>{
+                        html_escape::encode_text(&self.player_usernames[player as usize])
+                    }</div>
                     if (won) { <div class="state-winner">"WIN"</div> }
                     if (turn && !self.state.game_over()) { <div class="state-winner">"TURN"</div> }
                 </div>

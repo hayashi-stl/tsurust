@@ -99,7 +99,7 @@ pub fn render_game_instance(game: &GameInstance) -> String {
     let status = if let Some(state) = game.state() {
         if state.game_over() { "Game Over" } else { "Game Started" }
     } else { "Game Not Started" };
-    let players = game.players().iter().join("; ");
+    let players = game.players().iter().map(|player| html_escape::encode_text(player)).join("; ");
 
     xml!(
         <div class="game-box">
