@@ -64,6 +64,12 @@ pub fn set_screen_state(state: ScreenState) {
     document().get_element_by_id("screen").unwrap().set_attribute("state", &state.to_string()).unwrap();
 }
 
+pub fn set_username(username: &str) {
+    document().get_element_by_id("username").unwrap().set_inner_html(
+        &html_escape::encode_text(username)
+    );
+}
+
 /// A rectangle.
 #[derive(Clone, Copy, Debug)]
 pub struct Rect {

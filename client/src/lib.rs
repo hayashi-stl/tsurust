@@ -79,6 +79,7 @@ fn run() -> Result<(), JsValue> {
     let username = window().prompt_with_message("Enter a username")
         .unwrap_or(None)
         .unwrap_or("Guest".to_owned());
+    render::set_username(&username);
     send_request(&Request::SetUsername{ username }, &ws);
 
     let cws = ws.clone();
