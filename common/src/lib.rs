@@ -13,7 +13,7 @@ use game_state::BaseGameState;
 use getset::{Getters, CopyGetters};
 pub use nalgebra;
 use player_state::Looker;
-use rand::{distributions::{Uniform, uniform::UniformInt}, prelude::Distribution, thread_rng};
+use rand::{distributions::{Uniform}, prelude::Distribution, thread_rng};
 use rand_pcg::Pcg64;
 use rand_core::SeedableRng;
 use serde::Deserialize;

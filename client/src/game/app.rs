@@ -4,10 +4,10 @@ use itertools::{Itertools, chain};
 use specs::prelude::*;
 use enum_dispatch::enum_dispatch;
 use common::game::BaseGame;
-use wasm_bindgen::JsCast;
-use web_sys::{Element, HtmlTemplateElement};
 
-use crate::{SVG_NS, console_log, document, ecs::{Model, TileSelect, Transform, Collider, TokenSlot, PortLabel, TokenToPlace, RunSelectGameSystem, SelectedGame}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS, BaseGameExt, ScreenState}, window};
+
+
+use crate::{SVG_NS, document, ecs::{Model, TileSelect, Transform, Collider, TokenSlot, PortLabel, TokenToPlace, RunSelectGameSystem, SelectedGame}, render::{self, BaseBoardExt, BaseTileExt, TOKEN_RADIUS, BaseGameExt, ScreenState}, window};
 
 use super::GameWorld;
 use gameplay::GameplayStateT;
@@ -68,11 +68,11 @@ pub trait AppStateT {
 }
 
 impl AppStateT for EnterUsername {
-    fn update(self, world: &mut GameWorld, requests: &mut Vec<Request>) -> AppState {
+    fn update(self, _world: &mut GameWorld, _requests: &mut Vec<Request>) -> AppState {
         self.into()
     }
 
-    fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
+    fn handle_response(self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
         match response {
             Response::JoinedLobby{ games } => {
                 Lobby::new(games, world).into()
@@ -104,7 +104,7 @@ impl AppStateT for Lobby {
         }
     }
 
-    fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
+    fn handle_response(mut self, world: &mut GameWorld, response: Response, _requests: &mut Vec<Request>) -> AppState {
         match response {
             Response::ChangedGame { game } => {
                 match self.game_entities.binary_search_by_key(&game.id(), |(id, _)| *id) {
@@ -139,11 +139,11 @@ impl Lobby {
 }
 
 impl AppStateT for WaitJoinGame {
-    fn update(self, world: &mut GameWorld, requests: &mut Vec<Request>) -> AppState {
+    fn update(self, _world: &mut GameWorld, _requests: &mut Vec<Request>) -> AppState {
         self.into()
     }
 
-    fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> AppState {
+    fn handle_response(mut self, world: &mut GameWorld, response: Response, _requests: &mut Vec<Request>) -> AppState {
         match response {
             Response::JoinedGame { game } => {
                 if self.id == game.id() {
@@ -175,7 +175,7 @@ impl AppStateT for StatelessGame {
         self.into()
     }
 
-    fn handle_response(mut self, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) ->AppState {
+    fn handle_response(mut self, world: &mut GameWorld, response: Response, _requests: &mut Vec<Request>) ->AppState {
         match response {
             Response::ChangedPlayers{ id, names } => {
                 if id == self.id {
@@ -409,7 +409,7 @@ impl Game {
         self.board_tile_entities.push(board_tile_entity);
     }
 
-    pub fn take_turn_placing_tile(&mut self, world: &mut GameWorld, player: u32, kind: &BaseKind, index: u32, action: &BaseGAct, loc: &BaseTLoc) {
+    pub fn take_turn_placing_tile(&mut self, world: &mut GameWorld, _player: u32, kind: &BaseKind, index: u32, action: &BaseGAct, loc: &BaseTLoc) {
         let delta = self.state.take_turn_placing_tile(&self.game, kind, index, action, loc);
         self.display_state(world);
 
@@ -550,7 +550,7 @@ pub mod gameplay {
     use enum_dispatch::enum_dispatch;
     use common::{math::Pt2, message::{Request, Response}, tile::BaseGAct};
 
-    use crate::{console_log, ecs::{PlacedPort, PlacedTLoc, RunPlaceTileSystem, RunPlaceTokenSystem, SelectedTile, TileLabel, TokenToPlace, Transform}, game::{GameWorld, app}, render::{BaseBoardExt, BaseTileExt}};
+    use crate::{ecs::{PlacedPort, PlacedTLoc, RunPlaceTileSystem, RunPlaceTokenSystem, SelectedTile, TileLabel, Transform}, game::{GameWorld, app}, render::{BaseBoardExt, BaseTileExt}};
 
     #[derive(Debug)]
     pub struct PlaceToken {
@@ -610,19 +610,19 @@ pub mod gameplay {
             }
         }
 
-        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
+        fn handle_response(self, _app: &mut app::Game, _world: &mut GameWorld, _response: Response, _requests: &mut Vec<Request>) -> GameplayState {
             self.into()
         }
     }
 
     impl GameplayStateT for WaitPlaceTokenCheck {
-        fn update(self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
+        fn update(self, _app: &mut app::Game, _world: &mut GameWorld, _requests: &mut Vec<Request>) -> GameplayState {
             self.into()
         }
 
-        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
+        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, _requests: &mut Vec<Request>) -> GameplayState {
             match response {
-                Response::PlacedToken { id, player, port } => if id == app.id && player == app.state.player_expect() {
+                Response::PlacedToken { id, player, port: _ } => if id == app.id && player == app.state.player_expect() {
                     world.world.delete_entity(self.token_entity).expect("Entity was deleted too early");
                     world.world.delete_entities(&self.start_ports).expect("Entity was deleted too early");
                     WaitPlaceTokens.into()
@@ -642,11 +642,11 @@ pub mod gameplay {
     }
 
     impl GameplayStateT for WaitPlaceTokens {
-        fn update(self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
+        fn update(self, _app: &mut app::Game, _world: &mut GameWorld, _requests: &mut Vec<Request>) -> GameplayState {
             self.into()
         }
 
-        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
+        fn handle_response(self, app: &mut app::Game, _world: &mut GameWorld, response: Response, _requests: &mut Vec<Request>) -> GameplayState {
             if let Response::AllPlacedTokens { id } = response {
                 if id == app.id {
                     WaitTurn.into()
@@ -660,11 +660,11 @@ pub mod gameplay {
     }
 
     impl GameplayStateT for WaitTurn {
-        fn update(self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
+        fn update(self, _app: &mut app::Game, _world: &mut GameWorld, _requests: &mut Vec<Request>) -> GameplayState {
             self.into()
         }
 
-        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
+        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, _requests: &mut Vec<Request>) -> GameplayState {
             if let Response::YourTurn { id } = response {
                 if id == app.id {
                     let port = app.state.board_state().player_port(app.state.player_expect()).expect("Port should be placed");
@@ -752,17 +752,17 @@ pub mod gameplay {
             }
         }
 
-        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
+        fn handle_response(self, _app: &mut app::Game, _world: &mut GameWorld, _response: Response, _requests: &mut Vec<Request>) -> GameplayState {
             self.into()
         }
     }
 
     impl GameplayStateT for WaitPlaceTileCheck {
-        fn update(self, app: &mut app::Game, world: &mut GameWorld, requests: &mut Vec<Request>) -> GameplayState {
+        fn update(self, _app: &mut app::Game, _world: &mut GameWorld, _requests: &mut Vec<Request>) -> GameplayState {
             self.into()
         }
 
-        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, requests: &mut Vec<Request>) -> GameplayState {
+        fn handle_response(self, app: &mut app::Game, world: &mut GameWorld, response: Response, _requests: &mut Vec<Request>) -> GameplayState {
             match response {
                 Response::PlacedTile{ id, player, .. } => if id == app.id && player == app.state.player_expect() {
                     self.tile_entity.map(|e| world.world.delete_entity(e).expect("Entity was deleted too early"));

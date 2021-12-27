@@ -1,10 +1,10 @@
 use std::{net::SocketAddr, collections::VecDeque};
-use std::iter;
 
-use async_std::sync::{Mutex, MutexGuard};
+
+use async_std::sync::{Mutex};
 use common::{message::{Request, Response}, player_state::Looker, board::{RectangleBoard, Board, BasePort, BaseTLoc}, game::{PathGame, GameId}, WrapBase, tile::{BaseKind, BaseGAct}};
-use fnv::FnvHashMap;
-use itertools::{Itertools, chain};
+
+use itertools::{Itertools};
 use log::*;
 
 use crate::state::State;

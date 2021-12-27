@@ -1,28 +1,28 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::f64::consts::TAU;
-use std::rc::Rc;
-use std::sync::mpsc::Sender;
-use std::{cell::Cell, marker::PhantomData};
-use std::fmt::Debug;
-use std::hash::Hash;
-use common::game::GameId;
-use common::{for_each_tile, nalgebra, nalgebra as na, GameInstance};
+use std::collections::{HashSet};
 
-use common::math::{Mtx2, Pt2, Vec2f, Vec3f, Vec3u, pt2};
-use common::nalgebra::{ComplexField, vector};
-use common::{board::{BaseBoard, BasePort, Board, RectangleBoard}, for_each_board, for_each_game, game::{BaseGame, Game, PathGame}, math::Vec2, tile::{RegularTile, Tile}};
-use common::board::{BaseTLoc, Port, TLoc};
-use common::tile::{BaseGAct, BaseKind, BaseTile, Kind};
+use std::rc::Rc;
+
+use std::{cell::Cell};
+use std::fmt::Debug;
+
+use common::game::GameId;
+use common::{GameInstance};
+
+use common::math::{Pt2, pt2};
+
+use common::{board::{BasePort}};
+use common::board::{BaseTLoc};
+use common::tile::{BaseGAct, BaseKind, BaseTile};
 use getset::{CopyGetters, Getters, MutGetters};
-use itertools::{Itertools, chain, iproduct, izip};
+use itertools::{Itertools};
 use specs::prelude::*;
 use wasm_bindgen::{JsCast, prelude::Closure};
-use web_sys::{DomParser, Element, KeyboardEvent, MouseEvent, SupportedType, SvgElement, SvgGraphicsElement, SvgMatrix, SvgsvgElement};
+use web_sys::{Element, KeyboardEvent, MouseEvent, SvgGraphicsElement};
 
-use crate::game::GameWorld;
+
 use crate::render::{BaseTileExt, SvgMatrixExt, self};
-use crate::{SVG_NS, add_event_listener, console_log, document};
+use crate::{document};
 
 /// Labels a game in the lobby with a GameInstance
 #[derive(Clone, Debug)]
@@ -319,11 +319,11 @@ impl Collider {
     pub fn new(elem: &Element) -> Self {
         let hovered_raw = Rc::new(Cell::new(false));
         let hovered_clone = Rc::clone(&hovered_raw);
-        let mouseover_listener = Closure::wrap(Box::new(move |e: MouseEvent| {
+        let mouseover_listener = Closure::wrap(Box::new(move |_e: MouseEvent| {
             hovered_clone.set(true);
         }) as Box<dyn FnMut(MouseEvent)>);
         let hovered_clone = Rc::clone(&hovered_raw);
-        let mouseout_listener = Closure::wrap(Box::new(move |e: MouseEvent| {
+        let mouseout_listener = Closure::wrap(Box::new(move |_e: MouseEvent| {
             hovered_clone.set(false);
         }) as Box<dyn FnMut(MouseEvent)>);
 
@@ -334,7 +334,7 @@ impl Collider {
 
         let clicked_raw = Rc::new(Cell::new(false));
         let clicked_clone = Rc::clone(&clicked_raw);
-        let click_listener = Closure::wrap(Box::new(move |e: MouseEvent| {
+        let click_listener = Closure::wrap(Box::new(move |_e: MouseEvent| {
             clicked_clone.set(true);
         }) as Box<dyn FnMut(MouseEvent)>);
 
@@ -411,7 +411,7 @@ impl<'a> System<'a> for SvgOrderSystem {
 
             values.sort_by_key(|(_, order, _)| *order);
             let parent = document().get_element_by_id(&parent_id).expect("SVG node unexpectedly removed");
-            for (svg_id, order, order_changed) in values {
+            for (svg_id, _order, order_changed) in values {
                 let elem = document().get_element_by_id(svg_id).expect("SVG node unexpectedly removed");
                 let node = parent.remove_child(&elem).expect("Failed to reorder");
                 parent.append_child(&node).expect("Failed to reorder");
@@ -634,7 +634,7 @@ impl<'a> System<'a> for SelectTileSystem {
         }
 
         // Update selection visualization
-        for (model, tile_select, tile) in (&data.models, &mut data.tile_selects, &data.tiles).join() {
+        for (model, tile_select, _tile) in (&data.models, &mut data.tile_selects, &data.tiles).join() {
             let elem = document().get_element_by_id(&model.id).expect("Missing model element");
             elem.set_attribute(
                 "class", 

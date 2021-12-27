@@ -1,26 +1,26 @@
 use std::f64::consts::TAU;
-use std::rc::Rc;
-use std::sync::mpsc::Sender;
-use std::{cell::Cell, marker::PhantomData};
+
+
+
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use common::{for_each_tile, nalgebra, nalgebra as na, GameInstance};
 
-use common::math::{Mtx2, Pt2, Vec2f, Vec3f, Vec3u, pt2};
-use common::nalgebra::{ComplexField, vector};
+use common::math::{Pt2, Vec3f, Vec3u, pt2};
+use common::nalgebra::vector;
 use common::{board::{BaseBoard, BasePort, Board, RectangleBoard}, for_each_board, for_each_game, game::{BaseGame, Game, PathGame}, math::Vec2, tile::{RegularTile, Tile}};
 use common::board::{BaseTLoc, Port, TLoc};
-use common::tile::{BaseGAct, BaseKind, BaseTile, Kind};
+use common::tile::{BaseGAct, BaseTile, Kind};
 use format_xml::{xml, spaced};
-use getset::{CopyGetters, Getters, MutGetters};
+
 use itertools::{Itertools, chain, iproduct, izip};
 use specs::prelude::*;
-use wasm_bindgen::{JsCast, prelude::Closure};
-use web_sys::{DomParser, Element, MouseEvent, SupportedType, SvgElement, SvgGraphicsElement, SvgMatrix, SvgsvgElement};
+use wasm_bindgen::{JsCast};
+use web_sys::{DomParser, Element, SupportedType, SvgElement, SvgMatrix};
 
 use crate::ecs::{Collider, Model, TLocLabel, TileSlot, Transform, TileLabel, TileSelect, TileToPlace, GameInstanceLabel};
 use crate::game::GameWorld;
-use crate::{SVG_NS, add_event_listener, console_log, document};
+use crate::{SVG_NS, document};
 
 //fn create_svg_element<S: JsCast>(name: &str) -> S {
 //    web_sys::window().unwrap().document().unwrap().create_element_ns(Some("http://www.w3.org/2000/svg"), name)
@@ -65,9 +65,9 @@ pub fn set_screen_state(state: ScreenState) {
 }
 
 pub fn set_username(username: &str) {
-    document().get_element_by_id("username").unwrap().set_inner_html(
-        &html_escape::encode_text(username)
-    );
+    let escaped = html_escape::encode_text(username);
+    document().get_element_by_id("username_1").unwrap().set_inner_html(&escaped);
+    document().get_element_by_id("username_2").unwrap().set_inner_html(&escaped);
 }
 
 /// A rectangle.
@@ -193,7 +193,7 @@ impl BoardExt for RectangleBoard {
         loc.cast() + vector![0.5, 0.5]
     }
 
-    fn render_collider(&self, loc: &Self::TLoc) -> SvgElement {
+    fn render_collider(&self, _loc: &Self::TLoc) -> SvgElement {
         let svg_str = xml! {
             <g xmlns={SVG_NS} fill="transparent">
                 <rect x="-0.5" y="-0.5" width="1" height="1"/>
@@ -299,7 +299,7 @@ impl<const EDGES: u32> TileExt for RegularTile<EDGES> {
     fn render(&self) -> String {
         if self.visible() {
             let connections = (0..self.num_ports()).map(|i| self.output(i)).collect_vec();
-            let mut covered = vec![false; connections.len()];
+            let _covered = vec![false; connections.len()];
             let poly_pts = regular_polygon_points(EDGES);
             let pts_normals = poly_pts.into_iter()
                 .circular_tuple_windows()

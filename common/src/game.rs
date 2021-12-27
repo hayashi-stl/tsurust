@@ -5,7 +5,7 @@ use enum_dispatch::enum_dispatch;
 use fnv::FnvHashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{board::{Board, Port, RectangleBoard, TLoc}, game_state::GameState, tile::{GAct, Kind, RegularTile, Tile}};
+use crate::{board::{Board, Port, TLoc}, game_state::GameState, tile::{GAct, Kind, Tile}};
 use crate::game_state::BaseGameState;
 use crate::board::BaseBoard;
 use crate::WrapBase;

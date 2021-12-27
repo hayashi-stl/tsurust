@@ -1,12 +1,12 @@
 use common::message::{Request, Response};
-use itertools::Itertools;
+
 use web_sys::WebSocket;
 
 use crate::{console_log, game::GameWorld};
 
 /// Processes a response and makes a nonnegative number of requests
 pub fn process_response(resp: Response, game_world: &mut GameWorld) -> Vec<Request> {
-    let doc = web_sys::window().unwrap().document().unwrap();
+    let _doc = web_sys::window().unwrap().document().unwrap();
 
     game_world.handle_response(resp)
 }

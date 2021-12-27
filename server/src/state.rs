@@ -1,18 +1,18 @@
-use std::{net::SocketAddr, collections::{HashMap, HashSet}};
+use std::{net::SocketAddr, collections::{HashMap}};
 
-use common::{board::{Board, RectangleBoard}, game::PathGame, message::Response};
+use common::{message::Response};
 use common::game::{GameId, BaseGame};
-use common::WrapBase;
+
 use fnv::FnvHashMap;
 use futures::channel::mpsc::UnboundedSender;
 use getset::{Getters, MutGetters};
 
-use crate::game::{GameInstance, Player};
+use crate::game::{GameInstance};
 
 type PeerMap = FnvHashMap<SocketAddr, Peer>;
 
 #[derive(Debug, Getters, MutGetters)]
-pub(crate) struct Peer {
+pub struct Peer {
     #[getset(get = "pub")]
     username: String,
     #[getset(get = "pub")]
@@ -23,7 +23,7 @@ impl Peer {
 }
 
 #[derive(Debug, Getters, MutGetters)]
-pub(crate) struct State {
+pub struct State {
     #[getset(get = "pub")]
     peers: PeerMap,
     /// Maps usernames to addresses

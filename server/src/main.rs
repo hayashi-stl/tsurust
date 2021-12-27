@@ -2,17 +2,17 @@ pub mod processor;
 pub mod game;
 pub mod state;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{sync::Arc};
 
 use async_std::{net::{SocketAddr, TcpListener, TcpStream}, sync::Mutex};
 use async_tungstenite::{accept_async, tungstenite::{Error, Message, Result}};
-use common::{game::BaseGame, game_state::BaseGameState, message::{Request, Response}};
-use fnv::FnvHashMap;
+use common::{message::{Request}};
+
 use futures::{StreamExt, future::{self, Either}, pin_mut, prelude::*};
-use futures::channel::mpsc::{self, UnboundedSender};
+use futures::channel::mpsc::{self};
 use log::*;
 
-use crate::{processor::{process_request, respond_to_request}, state::State};
+use crate::{processor::{respond_to_request}, state::State};
 
 async fn accept_connection(peer: SocketAddr, stream: TcpStream, state: Arc<Mutex<State>>) {
     if let Err(e) = handle_connection(peer, stream, Arc::clone(&state)).await {
@@ -24,7 +24,7 @@ async fn accept_connection(peer: SocketAddr, stream: TcpStream, state: Arc<Mutex
 }
 
 async fn handle_connection(peer: SocketAddr, stream: TcpStream, state: Arc<Mutex<State>>) -> Result<()> {
-    let mut ws_stream = accept_async(stream).await.expect(&format!("Failed to accept {}", peer));
+    let ws_stream = accept_async(stream).await.expect(&format!("Failed to accept {}", peer));
     info!("New web socket connection: {}", peer);
     let (mut sink, mut stream) = ws_stream.split();
 

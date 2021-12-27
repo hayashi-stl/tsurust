@@ -1,12 +1,12 @@
-use crate::math::{Pt2i, Pt2u, Vec2i, Vec2u};
+use crate::math::{Pt2i, Pt2u, Vec2u};
 use crate::tile::Kind;
 use na::point;
 use nalgebra as na;
 use nalgebra::vector;
 use itertools::{Itertools, chain, iproduct};
-use enum_dispatch::enum_dispatch;
+
 use serde::{Deserialize, Serialize};
-use getset::{CopyGetters, Getters};
+use getset::{CopyGetters};
 use crate::{wrap_functions, impl_wrap_functions};
 
 use std::fmt::Debug;

@@ -1,11 +1,11 @@
 use fnv::FnvHashMap;
 use getset::Getters;
 use itertools::Itertools;
-use enum_dispatch::enum_dispatch;
+
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumDiscriminants;
 
-use crate::{board::Board, game::Game, tile::{RegularTile, Tile}};
+use crate::{board::Board, game::Game, tile::{Tile}};
 use crate::tile::{BaseKind, BaseTile, Kind};
 use crate::WrapBase;
 

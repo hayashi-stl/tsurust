@@ -3,7 +3,7 @@ pub mod render;
 pub mod game;
 pub mod ecs;
 
-use common::game::GameId;
+
 use common::message::Request;
 use common::message::Response;
 use wasm_bindgen::convert::FromWasmAbi;
@@ -13,12 +13,12 @@ use web_sys::Document;
 use web_sys::Element;
 use web_sys::ErrorEvent;
 use web_sys::Event;
-use web_sys::HtmlInputElement;
+
 use web_sys::Window;
-use web_sys::{BinaryType, MessageEvent, WebSocket, console};
-use std::cell::Cell;
+use web_sys::{BinaryType, MessageEvent, WebSocket};
+
 use std::cell::RefCell;
-use std::iter;
+
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -109,7 +109,7 @@ fn run() -> Result<(), JsValue> {
     ws.set_onerror(Some(on_error.as_ref().unchecked_ref()));
     on_error.forget();
 
-    let cws = ws.clone();
+    let _cws = ws.clone();
     let on_open = Closure::wrap(Box::new(move |_| {
 
     }) as Box<dyn FnMut(JsValue)>);

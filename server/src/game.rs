@@ -1,10 +1,10 @@
 use std::net::SocketAddr;
 
-use common::{game::{BaseGame, GenericGame, GameId}, game_state::BaseGameState, player_state::Looker};
+use common::{game::{BaseGame, GameId}, game_state::BaseGameState};
 use getset::{Getters, CopyGetters};
 
 #[derive(Clone, Debug, Getters, CopyGetters)]
-pub(crate) struct Player {
+pub struct Player {
     #[getset(get_copy = "pub")]
     addr: SocketAddr,
     #[getset(get = "pub")]
@@ -12,7 +12,7 @@ pub(crate) struct Player {
 }
 
 #[derive(Debug, Getters, CopyGetters)]
-pub(crate) struct GameInstance {
+pub struct GameInstance {
     #[getset(get_copy = "pub")]
     id: GameId,
     #[getset(get = "pub")]
@@ -57,7 +57,7 @@ impl GameInstance {
     /// Returns the player's index if they got added or their address got replaced.
     pub fn add_player(&mut self, addr: SocketAddr, username: String) -> Option<u32> {
         if let Some((index, player)) = self.players.iter_mut().enumerate()
-            .find(|(i, player)| player.username == username)
+            .find(|(_i, player)| player.username == username)
         {
             player.addr = addr;
             Some(index as u32)
@@ -81,8 +81,8 @@ impl GameInstance {
     /// Adds a spectator to the game by address and username, replacing the address if the
     /// username already exists.
     pub fn add_spectator(&mut self, addr: SocketAddr, username: String) {
-        if let Some((index, spectator)) = self.spectators.iter_mut().enumerate()
-            .find(|(i, spectator)| spectator.username == username)
+        if let Some((_index, spectator)) = self.spectators.iter_mut().enumerate()
+            .find(|(_i, spectator)| spectator.username == username)
         {
             spectator.addr = addr;
         } else {

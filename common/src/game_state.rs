@@ -1,13 +1,13 @@
 use std::collections::VecDeque;
-use enum_dispatch::enum_dispatch;
+
 use fnv::FnvHashMap;
 use getset::{CopyGetters, Getters};
 use itertools::Itertools;
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
-use log::*;
 
-use crate::{board::{BasePort, BaseTLoc, Board, RectangleBoard, TLoc}, board_state::BoardState, game::{Game, PathGame}, pcg64, player_state::{Looker, PlayerState}, tile::{BaseKind, RegularTile, Tile, Kind}};
+
+use crate::{board::{BasePort, BaseTLoc, Board, TLoc}, board_state::BoardState, game::{Game}, pcg64, player_state::{Looker, PlayerState}, tile::{BaseKind, Tile, Kind}};
 use crate::tile::{BaseTile, GAct, BaseGAct};
 use crate::board_state::BaseBoardState;
 use crate::board::Port;
@@ -357,7 +357,7 @@ impl<G: Game> GameState<G> {
 
     /// Removes tiles from dead players.
     /// Assumes the players were just alive
-    pub fn handle_dead_players(&mut self, game: &G, players: &[u32]) {
+    pub fn handle_dead_players(&mut self, _game: &G, players: &[u32]) {
         let tiles = players.into_iter().flat_map(|player| {
             let tiles = self.player_states[*player as usize].as_mut().unwrap().remove_all_tiles();
             self.player_states[*player as usize] = None;
@@ -377,14 +377,14 @@ impl<G: Game> GameState<G> {
 
     /// Have the current player take a turn by placing their token on the board on port `port`.
     /// The turn is processed and then advances to the next player.
-    pub fn take_turn_placing_player(&mut self, game: &G, port: &G::Port) {
+    pub fn take_turn_placing_player(&mut self, _game: &G, port: &G::Port) {
         self.place_player(self.turn_player(), port);
         // All players should still be alive
         self.turn_player = (self.turn_player + 1) % self.num_players();
     }
 
     /// Can `player` place a tile of kind `kind` from index `index` in their hand transformed by group action `action` to location `loc`?
-    pub fn can_place_tile(&mut self, game: &G, player: u32, kind: &G::Kind, index: u32, action: &G::GAct, loc: &G::TLoc) -> bool {
+    pub fn can_place_tile(&mut self, game: &G, player: u32, kind: &G::Kind, index: u32, _action: &G::GAct, loc: &G::TLoc) -> bool {
         self.player_states[player as usize].as_ref().map_or(false, |state| index < state.num_tiles_by_kind(kind)) &&
             self.board_state.player_port(player).map_or(false, |port|
                 game.board().port_locs(port).contains(loc)) &&

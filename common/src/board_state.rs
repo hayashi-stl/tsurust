@@ -1,14 +1,14 @@
 use fnv::FnvHashMap;
 use itertools::Itertools;
-use log::debug;
+
 use std::hash::Hash;
 use std::fmt::Debug;
-use enum_dispatch::enum_dispatch;
+
 use serde::{Deserialize, Serialize};
 
-use crate::board::{BasePort, Board, RectangleBoard, Port, BaseTLoc, TLoc};
+use crate::board::{BasePort, Board, Port, BaseTLoc, TLoc};
 use crate::game::Game;
-use crate::tile::{RegularTile, Tile, BaseTile};
+use crate::tile::{Tile, BaseTile};
 use crate::WrapBase;
 
 #[macro_export]
