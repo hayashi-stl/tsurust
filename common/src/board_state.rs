@@ -127,6 +127,8 @@ where
 
         let mut dead = vec![];
 
+        // Making this change would introduce short-circuiting
+        #[allow(clippy::unnecessary_fold)]
         while !to_advance.iter_mut().map(|(player, maybe_loc)| {
                 if let Some(loc) = maybe_loc {
                     // Move player

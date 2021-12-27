@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, collections::{HashMap}};
+use std::{net::SocketAddr, collections::{HashMap, hash_map}};
 
 use common::{message::Response};
 use common::game::{GameId, BaseGame};
@@ -77,14 +77,14 @@ impl State {
     /// Set the username of a peer, assuming it exists.
     /// Returns false instead if the username is not unique.
     pub fn set_username(&mut self, addr: SocketAddr, username: String) -> bool {
-        if self.inv_peers.contains_key(&username) {
-            false
-        } else {
+        if let hash_map::Entry::Vacant(e) = self.inv_peers.entry(username.clone()) {
             self.peers.get_mut(&addr)
                 .expect("Expected peer to exist")
-                .username = username.clone();
-            self.inv_peers.insert(username, addr);
+                .username = username;
+            e.insert(addr);
             true
+        } else {
+            false
         }
     }
 

@@ -98,7 +98,7 @@ impl<T: Tile> PlayerState<T> {
 
     /// Adds a tile to the player's hand
     pub fn add_tile(&mut self, tile: T) {
-        self.tiles.get_mut(&tile.kind()).expect("Every kind should have a tile list").push(tile)
+        self.tiles.get_mut(tile.kind()).expect("Every kind should have a tile list").push(tile)
     }
 
     /// Removes and returns a tile from the player's hand by kind and index.

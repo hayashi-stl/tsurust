@@ -305,7 +305,7 @@ impl<G: Game> GameState<G> {
     /// None if there're no tiles of that kind left.
     pub fn top_tile_left_of_kind(&self, kind: &G::Kind) -> Option<&G::Tile> {
         self.tiles.get(kind)
-            .and_then(|tiles| tiles.into_iter().next())
+            .and_then(|tiles| tiles.iter().next())
     }
 
     /// Whether the game is over
@@ -358,7 +358,7 @@ impl<G: Game> GameState<G> {
     /// Removes tiles from dead players.
     /// Assumes the players were just alive
     pub fn handle_dead_players(&mut self, _game: &G, players: &[u32]) {
-        let tiles = players.into_iter().flat_map(|player| {
+        let tiles = players.iter().flat_map(|player| {
             let tiles = self.player_states[*player as usize].as_mut().unwrap().remove_all_tiles();
             self.player_states[*player as usize] = None;
             tiles
@@ -366,13 +366,13 @@ impl<G: Game> GameState<G> {
 
         for mut tile in tiles {
             tile.set_visible(false);
-            self.tiles.get_mut(&tile.kind()).unwrap().push_back(tile);
+            self.tiles.get_mut(tile.kind()).unwrap().push_back(tile);
         }
     }
 
     /// Can someone place their token on the board on port `port`?
     pub fn can_place_player(&mut self, game: &G, port: &G::Port) -> bool {
-        self.board_state.player_at(port).is_none() && game.start_ports().contains(&port)
+        self.board_state.player_at(port).is_none() && game.start_ports().contains(port)
     }
 
     /// Have the current player take a turn by placing their token on the board on port `port`.
@@ -402,7 +402,7 @@ impl<G: Game> GameState<G> {
 
         let tile_placed = self.player_place_tile(self.turn_player(), kind, index, action, loc);
         let dead = self.advance_players(game.board(), loc);
-        let players_died = dead.len() > 0;
+        let players_died = !dead.is_empty();
         self.handle_dead_players(game, &dead);
         let drawn_tiles = if players_died {
             self.redistribute_tiles(game)
@@ -412,7 +412,7 @@ impl<G: Game> GameState<G> {
 
         let mut all_dead = false;
         if let Some(next) = (0..self.num_players()).cycle().skip(self.turn_player() as usize + 1).take(self.num_players() as usize)
-            .filter(|player| self.player_state(*player).is_some()).next()
+            .find(|player| self.player_state(*player).is_some())
         {
             self.turn_player = next;
         } else {

@@ -28,7 +28,7 @@ use crate::processor::process_response;
 use crate::processor::send_request;
 
 /// The SVG namespace
-pub const SVG_NS: &'static str = "http://www.w3.org/2000/svg";
+pub const SVG_NS: &str = "http://www.w3.org/2000/svg";
 
 #[macro_export]
 macro_rules! console_log {
@@ -78,7 +78,7 @@ fn run() -> Result<(), JsValue> {
 
     let username = window().prompt_with_message("Enter a username")
         .unwrap_or(None)
-        .unwrap_or("Guest".to_owned());
+        .unwrap_or_else(|| "Guest".to_owned());
     render::set_username(&username);
     send_request(&Request::SetUsername{ username }, &ws);
 
@@ -119,7 +119,7 @@ fn run() -> Result<(), JsValue> {
     let on_frame = Rc::new(RefCell::new(None));
     let on_frame_clone = Rc::clone(&on_frame);
     let cgw = Arc::clone(&game_world);
-    let cws = ws.clone();
+    let cws = ws;
     *on_frame.borrow_mut() = Some(Closure::wrap(Box::new(move || {
         for req in cgw.lock().unwrap().update() {
             send_request(&req, &cws);

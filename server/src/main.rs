@@ -24,7 +24,7 @@ async fn accept_connection(peer: SocketAddr, stream: TcpStream, state: Arc<Mutex
 }
 
 async fn handle_connection(peer: SocketAddr, stream: TcpStream, state: Arc<Mutex<State>>) -> Result<()> {
-    let ws_stream = accept_async(stream).await.expect(&format!("Failed to accept {}", peer));
+    let ws_stream = accept_async(stream).await.unwrap_or_else(|_| panic!("Failed to accept {}", peer));
     info!("New web socket connection: {}", peer);
     let (mut sink, mut stream) = ws_stream.split();
 
@@ -78,7 +78,7 @@ async fn run() {
 
     info!("Attempting to listen to {}", common::HOST_ADDRESS);
     let listener = TcpListener::bind(common::HOST_ADDRESS).await
-        .expect(&format!("Can't listen to {}", common::HOST_ADDRESS));
+        .unwrap_or_else(|_| panic!("Can't listen to {}", common::HOST_ADDRESS));
     info!("Listening on {}", common::HOST_ADDRESS);
 
     while let Ok((stream, _)) = listener.accept().await {

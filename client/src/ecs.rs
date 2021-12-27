@@ -156,7 +156,7 @@ impl Model {
     pub fn new(elem: &Element, order: i32, parent: &Element, id: &mut u64) -> Self {
         elem.set_id(&id.to_string());
         *id += 1;
-        parent.append_child(&elem).expect("Failed to add element");
+        parent.append_child(elem).expect("Failed to add element");
         Model { id: elem.id(), order, order_changed: true }
     }
 }
@@ -312,7 +312,7 @@ impl Component for Collider {
 
 impl Collider {
     pub const ORDER_START_PORT: i32 = -(i32::MIN / 2) + 1;
-    pub const ORDER_TILE_LOC: i32 = -(i32::MIN / 2) + 0;
+    pub const ORDER_TILE_LOC: i32 = -(i32::MIN / 2);
 
     /// Constructs a collider.
     /// Takes an element to insert callbacks into

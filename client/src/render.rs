@@ -30,13 +30,13 @@ use crate::{SVG_NS, document};
 //}
 
 pub fn parse_elem(elem_str: &str) -> Element {
-    let elem = DomParser::new().unwrap().parse_from_string(&elem_str, SupportedType::ApplicationXml)
+    let elem = DomParser::new().unwrap().parse_from_string(elem_str, SupportedType::ApplicationXml)
         .expect("Element could not be created");
     elem.document_element().expect("Element doesn't have an element")
 }
 
 pub fn parse_svg(svg_str: &str) -> SvgElement {
-    let svg = DomParser::new().unwrap().parse_from_string(&svg_str, SupportedType::ImageSvgXml)
+    let svg = DomParser::new().unwrap().parse_from_string(svg_str, SupportedType::ImageSvgXml)
         .expect("SVG could not be created");
     svg.document_element().expect("SVG doesn't have an element")
         .dyn_into().expect("SVG is not an SVG")
@@ -208,7 +208,7 @@ impl BoardExt for RectangleBoard {
             .with(Model::new(&svg, Collider::ORDER_TILE_LOC, &GameWorld::svg_root(), id_counter))
             .with(Collider::new(&svg))
             .with(Transform::new(self.loc_position(loc)))
-            .with(TLocLabel(loc.clone().wrap_base()))
+            .with(TLocLabel(loc.wrap_base()))
             .with(TileSlot)
             .build()
     }

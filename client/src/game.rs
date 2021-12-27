@@ -118,7 +118,7 @@ impl GameWorld {
     }
 
     pub fn update(&mut self) -> Vec<Request> {
-        self.dispatcher.dispatch(&mut self.world);
+        self.dispatcher.dispatch(&self.world);
 
         let mut requests = vec![];
 
@@ -126,7 +126,7 @@ impl GameWorld {
             .expect("State is missing")
             .update(self, &mut requests));
 
-        self.render_dispatcher.dispatch(&mut self.world);
+        self.render_dispatcher.dispatch(&self.world);
 
         requests
     }

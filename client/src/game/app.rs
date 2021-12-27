@@ -81,7 +81,7 @@ impl AppStateT for EnterUsername {
             Response::RejectedUsername => {
                 let username = window().prompt_with_message("Enter a username. The one you entered is already taken.")
                     .unwrap_or(None)
-                    .unwrap_or("Guest".to_owned());
+                    .unwrap_or_else(|| "Guest".to_owned());
                 render::set_username(&username);
                 requests.push(Request::SetUsername{ username });
                 self.into()
@@ -402,7 +402,7 @@ impl Game {
     pub fn place_tile(&mut self, world: &mut GameWorld, tile: &BaseTile, loc: &BaseTLoc) {
         let board_tile_entity = tile.create_on_board_entity(
             &self.game.board(),
-            &loc,
+            loc,
             &mut world.world,
             &mut world.id_counter,
         );
@@ -534,6 +534,8 @@ impl Game {
 }
 
 #[enum_dispatch(AppStateT)]
+// Only one of these will be stored, so who cares?
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum AppState {
     EnterUsername,
@@ -709,7 +711,7 @@ pub mod gameplay {
                             .cloned();
                         world.world.delete_entity(entity).ok();
                         transform
-                    }).unwrap_or(Transform::new(Pt2::origin()));
+                    }).unwrap_or_else(|| Transform::new(Pt2::origin()));
 
                     if let Some(tile) = tile {
                         self.tile_entity = Some(tile.create_to_place_entity(
